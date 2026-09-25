@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Planches d'étiquettes codes-barres",
+  title: "Étiquettes BVP",
   description:
-    "Génère une planche A4 d'étiquettes codes-barres imprimable (Apli/Agipa 118990, 65 étiquettes 38 × 21,2 mm).",
+    "Étiquetage réglementaire BVP : fiches produits, planches A4 Agipa 118987 (8 étiquettes 99,1 × 67,7 mm) avec code-barres caisse.",
 };
 
 export default function RootLayout({

@@ -7,8 +7,9 @@
 import { describe, expect, it } from "vitest";
 
 import { barPattern } from "./barcode-modules";
-import { APLI_118990 } from "./label-layout";
-import { buildLabelContent } from "./label-render";
+import { painAuChocolat, SAMPLE_SETTINGS } from "./fixtures";
+import { AGIPA_118987 } from "./label-layout";
+import { prepareLabel } from "./label-job";
 import { createMeasurer } from "./pdf";
 import { resolveCode, type Symbology } from "./symbology";
 
@@ -30,13 +31,15 @@ function modulesFromLabel(input: string, symbology: Symbology): string {
   const resolved = resolveCode(input, symbology);
   if (!resolved.ok) throw new Error(resolved.error);
   const pattern = barPattern(resolved.code.symbology, resolved.code.value);
-  const content = buildLabelContent({
-    spec: APLI_118990,
-    pattern,
-    name: "Produit",
-    humanReadable: resolved.code.humanReadable,
+  // Étiquette BVP complète (texte, logo absent, pied), comme à l'impression.
+  const { content } = prepareLabel(
+    { ...painAuChocolat(), barcode: input, symbology },
+    SAMPLE_SETTINGS,
+    new Date(2026, 8, 25),
+    AGIPA_118987,
     measure,
-  });
+  );
+  if (!content) throw new Error("mise en page impossible");
 
   const originMm = content.bars[0].xMm;
   const bits = Array.from({ length: pattern.totalModules }, () => "0");
@@ -99,6 +102,13 @@ function decodeEan8(bits: string): string {
 }
 
 describe("relecture des barres imprimées", () => {
+  it.each(["2000000271040", "2000000271965", "2000000319650"])(
+    "relit le code caisse %s (préfixe 2, circulation restreinte)",
+    (value) => {
+      expect(decodeEan13(modulesFromLabel(value, "ean13"))).toBe(value);
+    },
+  );
+
   it("relit un EAN-13", () => {
     expect(decodeEan13(modulesFromLabel("5901234123457", "ean13"))).toBe(
       "5901234123457",

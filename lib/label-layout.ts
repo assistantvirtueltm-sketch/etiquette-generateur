@@ -51,36 +51,33 @@ export interface PurchaseLink {
 }
 
 /**
- * Apli / Agipa réf. 118990 — 65 étiquettes de 38 × 21,2 mm par feuille A4.
+ * Agipa (Apli) réf. 118987 — 8 étiquettes de 99,1 × 67,7 mm par feuille A4,
+ * coins arrondis, 2 colonnes × 4 lignes.
  *
- * Cotes relevées dans le gabarit Word du fabricant
- * (`docs/apli-118990-gabarit.doc`, cf. `docs/apli-118990-gabarit.md`) :
- * les étiquettes sont **jointives**, sans aucune gouttière, et la matrice de
- * 190 × 275,6 mm est centrée sur la feuille — ce qui redonne exactement les
- * marges du gabarit, 10,0 mm à gauche et 10,707 mm en haut.
- *
- * Ne pas confondre avec la matrice Avery L7651 (même 38 × 21,2 mm, mais pas de
- * 40,6 mm avec gouttières de 2,6 mm) : ce pas décale les colonnes extérieures
- * de 5 mm et les fait déborder du support.
+ * ⚠️ Cotes PROVISOIRES : le gabarit du fabricant n'a pas encore été relevé
+ * (cf. `docs/agipa-118987-gabarit.md`). Ce sont les cotes de la matrice
+ * standard de ce format (2 × 4, gouttière verticale de 2,5 mm entre les
+ * colonnes, lignes jointives, matrice centrée : marges 4,65 / 13,1 mm). À
+ * confirmer sur le gabarit Word d'Apli, puis à figer par un test comme pour
+ * l'ancienne 118990.
  */
-export const APLI_118990: SheetSpec = {
-  id: "apli-118990",
-  name: "65 étiquettes 38 × 21,2 mm (A4)",
-  reference: "Apli/Agipa 118990",
-  labelWidthMm: 38,
-  labelHeightMm: 21.2,
-  columns: 5,
-  rows: 13,
-  columnPitchMm: 38,
-  rowPitchMm: 21.2,
+export const AGIPA_118987: SheetSpec = {
+  id: "agipa-118987",
+  name: "8 étiquettes 99,1 × 67,7 mm (A4)",
+  reference: "Agipa 118987",
+  labelWidthMm: 99.1,
+  labelHeightMm: 67.7,
+  columns: 2,
+  rows: 4,
+  columnPitchMm: 101.6,
+  rowPitchMm: 67.7,
   purchase: {
-    // Même matrice 65 × 38 × 21,2 mm, vendue sous la référence Agipa 102199.
-    url: "https://www.amazon.fr/Agipa-102199-Etiquettes-multi-arrondis/dp/B07DYC21JD/",
-    label: "Amazon.fr — Agipa 102199",
+    url: "https://www.bureau-vallee.fr/800-etiquettes-multi-usages-99-1x67-7-174353.html",
+    label: "Bureau Vallée — Agipa 118987 (boîte de 800)",
   },
 };
 
-export const SHEET_SPECS: readonly SheetSpec[] = [APLI_118990];
+export const SHEET_SPECS: readonly SheetSpec[] = [AGIPA_118987];
 
 export function labelsPerSheet(spec: SheetSpec): number {
   return spec.columns * spec.rows;
@@ -201,20 +198,45 @@ export function ptToMm(valuePt: number): number {
 }
 
 /**
- * Mise en page interne d'une étiquette. Les bandes sont empilées du haut vers
- * le bas ; la hauteur restante va aux barres.
+ * Hauteur d'x de l'Helvetica, en fraction du corps (métrique AFM « XHeight »
+ * 523/1000). Sert à convertir la hauteur d'x minimale légale en corps de
+ * police : corps (pt) = hauteur d'x (pt) / 0,523.
+ */
+export const HELVETICA_X_HEIGHT_EM = 0.523;
+
+/** Corps minimal (pt) pour respecter une hauteur d'x donnée (mm). */
+export function minFontSizePt(xHeightMm: number): number {
+  return mmToPt(xHeightMm) / HELVETICA_X_HEIGHT_EM;
+}
+
+/**
+ * Mise en page interne d'une étiquette BVP, de haut en bas :
+ * en-tête (logo + dénomination), corps (ingrédients, allergènes, valeurs
+ * nutritionnelles, mentions), pied (code-barres à gauche, dates / quantité /
+ * prix à droite), puis ligne du magasin.
  */
 export const LABEL_STYLE = {
-  paddingXMm: 1.5,
-  paddingYMm: 1.2,
-  nameBandMm: 3.2,
-  gapNameBarcodeMm: 0.6,
-  gapBarcodeDigitsMm: 0.5,
-  digitsBandMm: 2.6,
-  nameMaxPt: 7,
-  nameMinPt: 4.5,
-  digitsMaxPt: 6.5,
-  digitsMinPt: 4,
+  /** Marge intérieure : le jet d'encre ne doit jamais approcher la découpe. */
+  paddingXMm: 2.5,
+  paddingYMm: 2.2,
+  /** Emprise maximale du logo. */
+  logoMaxWidthMm: 16,
+  logoMaxHeightMm: 9,
+  gapLogoNameMm: 2,
+  nameMaxPt: 10,
+  /** Interligne en fraction du corps. */
+  lineHeightEm: 1.12,
+  /** Corps maximal du texte courant ; il est réduit jusqu'au minimum légal. */
+  bodyMaxPt: 7.5,
+  gapSectionMm: 1,
+  /** Espace entre deux paragraphes du corps. */
+  paragraphGapEm: 0.25,
+  /** Hauteur des barres (hors chiffres). */
+  barsHeightMm: 10,
+  gapBarcodeDigitsMm: 0.4,
+  digitsPt: 7,
+  gapFooterColumnsMm: 3,
+  pricePt: 16,
   /** X-dimension nominale d'un EAN-13 à 100 % de grossissement. */
   nominalModuleMm: 0.33,
   /** Sous ce seuil, les barres deviennent risquées à l'impression jet d'encre. */

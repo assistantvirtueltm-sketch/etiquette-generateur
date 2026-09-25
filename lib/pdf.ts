@@ -1,16 +1,15 @@
 /**
- * Génération des PDF (planche d'étiquettes et planche de calibration).
+ * Génération des PDF (planches d'étiquettes du jour et planche de calibration).
  *
  * pdf-lib construit le document en mémoire dans le navigateur : les barres sont
- * des rectangles vectoriels, les textes des polices standard. Aucune image, donc
- * aucune perte de netteté à l'impression.
+ * des rectangles vectoriels, les textes des polices standard. Seul le logo du
+ * magasin est une image ; le code-barres n'en est jamais une.
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from "pdf-lib";
 
-import { barPattern } from "./barcode-modules";
 import {
   A4_MM,
-  APLI_118990,
+  AGIPA_118987,
   labelSlot,
   labelsPerSheet,
   mmToPt,
@@ -19,26 +18,12 @@ import {
   type PrintOffsetMm,
   type SheetSpec,
 } from "./label-layout";
-import { buildLabelContent, type MeasureText } from "./label-render";
-import type { ResolvedCode } from "./symbology";
+import { prepareLabel, planSheets, type PreparedLabel } from "./label-job";
+import type { LabelContent, MeasureText } from "./label-render";
+import { localDay, type Product } from "./product";
+import type { LibrarySettings } from "./storage";
 
-/**
- * Caractères représentables par les polices standard PDF (WinAnsi). Tout le
- * reste ferait échouer `drawText`, on le remplace donc en amont.
- */
-const WIN_ANSI_SAFE =
-  /^[ -~ -ÿ€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]*$/;
-
-export function sanitizeForPdf(text: string): {
-  text: string;
-  changed: boolean;
-} {
-  if (WIN_ANSI_SAFE.test(text)) return { text, changed: false };
-  const safe = [...text]
-    .map((ch) => (WIN_ANSI_SAFE.test(ch) ? ch : "?"))
-    .join("");
-  return { text: safe, changed: true };
-}
+export { sanitizeForPdf } from "./text-layout";
 
 interface Fonts {
   regular: PDFFont;
@@ -62,98 +47,154 @@ export async function createMeasurer(): Promise<MeasureText> {
   });
 }
 
-export interface SheetJob {
-  code: ResolvedCode;
-  /** Libellé produit imprimé au-dessus des barres. */
-  name: string;
-  spec?: SheetSpec;
-  /** Index 0-based de la première étiquette utilisée (planche entamée). */
-  startIndex?: number;
-  /** Nombre d'étiquettes ; par défaut, jusqu'au bas de la planche. */
-  count?: number;
-  offset?: PrintOffsetMm;
+export interface PrintJob {
+  product: Product;
+  count: number;
 }
 
 export interface GeneratedPdf {
   bytes: Uint8Array;
   fileName: string;
-  /** Nombre d'étiquettes réellement posées sur la planche. */
   labelCount: number;
-  /** Index 0-based de la première étiquette utilisée, après bornage. */
-  startIndex: number;
+  sheetCount: number;
   warnings: readonly string[];
 }
 
-export async function buildSheetPdf(job: SheetJob): Promise<GeneratedPdf> {
-  const spec = job.spec ?? APLI_118990;
-  const perSheet = labelsPerSheet(spec);
-  const startIndex = clampIndex(job.startIndex ?? 0, perSheet);
-  const count = Math.max(
-    1,
-    Math.min(job.count ?? perSheet - startIndex, perSheet - startIndex),
-  );
-  const offset = job.offset ?? NO_OFFSET;
+/** Levée quand au moins un produit ne peut pas être imprimé. */
+export class LabelRefusedError extends Error {
+  constructor(readonly refused: readonly PreparedLabel[]) {
+    super(
+      `Impression refusée : ${refused
+        .map(
+          (label) =>
+            `« ${label.product.name || "sans nom"} » (${label.issues.find((i) => i.level === "error")?.message ?? "fiche invalide"})`,
+        )
+        .join(" ; ")}`,
+    );
+    this.name = "LabelRefusedError";
+  }
+}
 
-  const pattern = barPattern(job.code.symbology, job.code.value);
-  const safeName = sanitizeForPdf(job.name);
+function isoDay(date: Date): string {
+  const day = localDay(date);
+  const mm = String(day.getMonth() + 1).padStart(2, "0");
+  const dd = String(day.getDate()).padStart(2, "0");
+  return `${day.getFullYear()}-${mm}-${dd}`;
+}
+
+function drawLabel(
+  page: ReturnType<PDFDocument["addPage"]>,
+  content: LabelContent,
+  slotX: number,
+  slotY: number,
+  fonts: Fonts,
+  logo: PDFImage | null,
+) {
+  const pageHeightPt = page.getHeight();
+  const black = rgb(0, 0, 0);
+  for (const bar of content.bars) {
+    page.drawRectangle({
+      x: mmToPt(slotX + bar.xMm),
+      y: pageHeightPt - mmToPt(slotY + bar.yMm + bar.heightMm),
+      width: mmToPt(bar.widthMm),
+      height: mmToPt(bar.heightMm),
+      color: black,
+    });
+  }
+  for (const text of content.texts) {
+    page.drawText(text.text, {
+      x: mmToPt(slotX + text.xMm),
+      y: pageHeightPt - mmToPt(slotY + text.baselineYMm),
+      size: text.sizePt,
+      font: text.bold ? fonts.bold : fonts.regular,
+      color: black,
+    });
+  }
+  if (logo && content.logo) {
+    page.drawImage(logo, {
+      x: mmToPt(slotX + content.logo.xMm),
+      y: pageHeightPt - mmToPt(slotY + content.logo.yMm + content.logo.heightMm),
+      width: mmToPt(content.logo.widthMm),
+      height: mmToPt(content.logo.heightMm),
+    });
+  }
+}
+
+/**
+ * Planches du jour : les étiquettes de chaque produit se suivent, feuille
+ * après feuille, de gauche à droite puis de haut en bas. Refuse l'impression
+ * (sans rien produire) si une seule fiche est invalide ou déborde.
+ */
+export async function buildPrintPdf(
+  jobs: readonly PrintJob[],
+  settings: LibrarySettings,
+  printedAt: Date,
+  spec: SheetSpec = AGIPA_118987,
+): Promise<GeneratedPdf> {
+  const wanted = jobs.filter((job) => Math.trunc(job.count) > 0);
+  if (wanted.length === 0) throw new Error("Aucune étiquette demandée.");
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`Étiquettes ${job.code.value}`);
-  doc.setSubject(`${spec.reference} — ${spec.name}`);
-  doc.setCreator("barcode-generator");
   const fonts: Fonts = {
     regular: await doc.embedFont(StandardFonts.Helvetica),
     bold: await doc.embedFont(StandardFonts.HelveticaBold),
   };
+  const measure = measurerFor(fonts);
 
-  const content = buildLabelContent({
-    spec,
-    pattern,
-    name: safeName.text,
-    humanReadable: job.code.humanReadable,
-    measure: measurerFor(fonts),
+  const prepared = wanted.map((job) =>
+    prepareLabel(job.product, settings, printedAt, spec, measure),
+  );
+  const refused = prepared.filter((label) => !label.printable);
+  if (refused.length > 0) throw new LabelRefusedError(refused);
+
+  let logo: PDFImage | null = null;
+  if (settings.logo) {
+    logo = settings.logo.dataUrl.startsWith("data:image/png")
+      ? await doc.embedPng(settings.logo.dataUrl)
+      : await doc.embedJpg(settings.logo.dataUrl);
+  }
+
+  const day = isoDay(printedAt);
+  doc.setTitle(`Étiquettes du ${day}`);
+  doc.setSubject(`${spec.reference} — ${spec.name}`);
+  doc.setCreator("etiquettes-bvp");
+
+  const perSheet = labelsPerSheet(spec);
+  const offset: PrintOffsetMm = { xMm: settings.offsetXMm, yMm: settings.offsetYMm };
+  const plan = planSheets(
+    wanted.map((job) => ({ productId: job.product.id, count: job.count })),
+    perSheet,
+  );
+
+  let page: ReturnType<PDFDocument["addPage"]> | null = null;
+  let index = 0;
+  wanted.forEach((job, jobIndex) => {
+    const content = prepared[jobIndex].content!;
+    for (let n = 0; n < Math.trunc(job.count); n++, index++) {
+      const slotIndex = index % perSheet;
+      if (slotIndex === 0) {
+        page = doc.addPage([mmToPt(A4_MM.widthMm), mmToPt(A4_MM.heightMm)]);
+      }
+      const slot = labelSlot(spec, slotIndex, offset);
+      drawLabel(page!, content, slot.xMm, slot.yMm, fonts, logo);
+    }
   });
 
-  const page = doc.addPage([mmToPt(A4_MM.widthMm), mmToPt(A4_MM.heightMm)]);
-  const pageHeightPt = page.getHeight();
-  const black = rgb(0, 0, 0);
-
-  for (let i = 0; i < count; i++) {
-    const slot = labelSlot(spec, startIndex + i, offset);
-
-    for (const bar of content.bars) {
-      page.drawRectangle({
-        x: mmToPt(slot.xMm + bar.xMm),
-        y: pageHeightPt - mmToPt(slot.yMm + bar.yMm + bar.heightMm),
-        width: mmToPt(bar.widthMm),
-        height: mmToPt(bar.heightMm),
-        color: black,
-      });
-    }
-
-    for (const text of content.texts) {
-      page.drawText(text.text, {
-        x: mmToPt(slot.xMm + text.xMm),
-        y: pageHeightPt - mmToPt(slot.yMm + text.baselineYMm),
-        size: text.sizePt,
-        font: text.bold ? fonts.bold : fonts.regular,
-        color: black,
-      });
-    }
-  }
-
-  const warnings = [...content.warnings];
-  if (safeName.changed) {
-    warnings.push(
-      "Certains caractères du libellé ne sont pas imprimables et ont été remplacés par « ? ».",
-    );
-  }
+  const warnings = [
+    ...new Set(
+      prepared.flatMap((label) =>
+        label.issues
+          .filter((issue) => issue.level === "warning")
+          .map((issue) => `${label.product.name} : ${issue.message}`),
+      ),
+    ),
+  ];
 
   return {
     bytes: await doc.save(),
-    fileName: sheetFileName(job.code, job.name),
-    labelCount: count,
-    startIndex,
+    fileName: `etiquettes-${day}.pdf`,
+    labelCount: plan.totalLabels,
+    sheetCount: plan.sheets,
     warnings,
   };
 }
@@ -164,7 +205,7 @@ export async function buildSheetPdf(job: SheetJob): Promise<GeneratedPdf> {
  * avant de consommer un support adhésif.
  */
 export async function buildCalibrationPdf(
-  spec: SheetSpec = APLI_118990,
+  spec: SheetSpec = AGIPA_118987,
   offset: PrintOffsetMm = NO_OFFSET,
 ): Promise<GeneratedPdf> {
   const doc = await PDFDocument.create();
@@ -177,8 +218,8 @@ export async function buildCalibrationPdf(
   page.drawText(
     `Calibration ${spec.reference} — ${spec.name} — décalage X ${offset.xMm.toFixed(1)} mm / Y ${offset.yMm.toFixed(1)} mm`,
     {
-      x: mmToPt(sheetMarginsMm(spec).leftMm),
-      y: pageHeightPt - mmToPt(5),
+      x: mmToPt(Math.max(sheetMarginsMm(spec).leftMm, 5)),
+      y: pageHeightPt - mmToPt(6),
       size: 7,
       font,
       color: ink,
@@ -200,9 +241,9 @@ export async function buildCalibrationPdf(
     page.drawText(labelNumber, {
       x:
         mmToPt(slot.xMm + slot.widthMm / 2) -
-        font.widthOfTextAtSize(labelNumber, 6) / 2,
-      y: pageHeightPt - mmToPt(slot.yMm + slot.heightMm / 2) - 2,
-      size: 6,
+        font.widthOfTextAtSize(labelNumber, 10) / 2,
+      y: pageHeightPt - mmToPt(slot.yMm + slot.heightMm / 2) - 3,
+      size: 10,
       font,
       color: ink,
     });
@@ -212,24 +253,7 @@ export async function buildCalibrationPdf(
     bytes: await doc.save(),
     fileName: `calibration-${spec.id}.pdf`,
     labelCount: perSheet,
-    startIndex: 0,
+    sheetCount: 1,
     warnings: [],
   };
-}
-
-function clampIndex(index: number, perSheet: number): number {
-  if (!Number.isFinite(index)) return 0;
-  return Math.min(Math.max(Math.trunc(index), 0), perSheet - 1);
-}
-
-export function sheetFileName(code: ResolvedCode, name: string): string {
-  const slug = name
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  const base = slug ? `${slug}-${code.value}` : code.value;
-  return `etiquettes-${base}.pdf`;
 }
