@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { PrintView } from "@/components/PrintView";
-import { ProductsView } from "@/components/ProductsView";
+import { ProductsView, type Editing } from "@/components/ProductsView";
 import { SettingsView } from "@/components/SettingsView";
 import { downloadJson, downloadPdf } from "@/lib/download";
 import { AGIPA_118987 } from "@/lib/label-layout";
@@ -21,7 +21,7 @@ import {
   createMeasurer,
   LabelRefusedError,
 } from "@/lib/pdf";
-import type { Product } from "@/lib/product";
+import { isBlankProduct, type Product } from "@/lib/product";
 import {
   applyImport,
   parseImport,
@@ -62,6 +62,7 @@ export default function Page() {
   );
   const [env, setEnv] = useState<ClientEnv | null>(null);
   const [tab, setTab] = useState<Tab>("print");
+  const [editing, setEditing] = useState<Editing>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
@@ -86,23 +87,41 @@ export default function Page() {
     }));
   }
 
+  /** Écriture immédiate (chaque frappe de l'éditeur). */
   function saveProduct(product: Product) {
     updateLibrary((current) => {
       const exists = current.products.some((item) => item.id === product.id);
-      const hasComposition = product.components.some(
-        (component) => component.ingredients.trim() !== "",
-      );
       return {
         ...current,
         products: exists
           ? current.products.map((item) => (item.id === product.id ? product : item))
           : [...current.products, product],
-        references: hasComposition
-          ? upsertReference(current.references, product)
-          : current.references,
       };
     });
-    setStatus({ kind: "info", text: `Fiche « ${product.name} » enregistrée.` });
+  }
+
+  /**
+   * Fermeture de l'éditeur. Le référentiel n'est alimenté qu'ici : à chaque
+   * frappe, la clé (le nom) changerait et créerait une fiche par lettre. Une
+   * fiche restée entièrement vide est retirée.
+   */
+  function closeProduct(productId: string) {
+    updateLibrary((current) => {
+      const product = current.products.find((item) => item.id === productId);
+      if (!product) return current;
+      if (isBlankProduct(product)) {
+        return {
+          ...current,
+          products: current.products.filter((item) => item.id !== productId),
+        };
+      }
+      const hasComposition = product.components.some(
+        (component) => component.ingredients.trim() !== "",
+      );
+      return hasComposition
+        ? { ...current, references: upsertReference(current.references, product) }
+        : current;
+    });
   }
 
   function removeProduct(product: Product) {
@@ -282,7 +301,10 @@ export default function Page() {
           spec={SPEC}
           measure={env.measure}
           today={env.today}
-          onSave={saveProduct}
+          editing={editing}
+          onEditingChange={setEditing}
+          onChange={saveProduct}
+          onClose={closeProduct}
           onRemove={removeProduct}
           onToggleActive={(product, active) =>
             updateLibrary((current) => ({

@@ -113,8 +113,17 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   écarte les entrées illisibles. Le fichier d'export a le même schéma.
   `applyImport` : fusion (fiches par id, référentiel par clé réf. fournisseur
   sinon nom) ou remplacement ; le décalage imprimante n'est jamais importé.
-  Le **référentiel** (`references`) = compositions réutilisables, alimenté à
-  chaque enregistrement de fiche, proposé en autocomplétion de la dénomination.
+  Le **référentiel** (`references`) = compositions réutilisables, proposé en
+  autocomplétion de la dénomination.
+- **Enregistrement immédiat** des fiches : pas de bouton « Enregistrer ».
+  `ProductEditor` lit la fiche dans la base et écrit chaque frappe
+  (`onChange` → `updateLibrary`) ; la fiche est créée dès « Nouvelle fiche ».
+  Le référentiel n'est alimenté qu'à la **fermeture** (`closeProduct` dans
+  `app/page.tsx`) — sa clé est le nom, l'alimenter à chaque frappe créerait
+  une fiche par lettre — et une fiche fermée vide (`isBlankProduct`) est
+  retirée. La version à l'ouverture sert à « Annuler mes modifications ».
+  La fiche ouverte (`editing`) est tenue par la page pour survivre à un
+  changement d'onglet.
 - `lib/library-store.ts` — store externe lu par `useSyncExternalStore`. La
   persistance se fait **à l'écriture**, pas dans un effet (la règle
   `react-hooks/set-state-in-effect` interdit le `setState` dans un effet) ;

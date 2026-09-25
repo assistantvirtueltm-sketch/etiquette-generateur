@@ -56,6 +56,8 @@ responsable qualité.
 2. **Fiches produits** : créer les fiches à partir des cartons fournisseurs.
    En tapant la dénomination, les fiches du référentiel sont proposées et
    leur composition peut être reprise. Coller le code-barres créé en caisse.
+   Tout est enregistré à chaque frappe (pas de bouton « Enregistrer ») ;
+   « Annuler mes modifications » revient à la fiche telle qu'à l'ouverture.
 3. **Impression du jour** : saisir le nombre d'étiquettes de chaque produit
    actif. L'app indique combien de feuilles mettre dans l'imprimante, puis
    télécharge le PDF.

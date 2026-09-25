@@ -152,6 +152,22 @@ export function emptyProduct(now = new Date().toISOString()): Product {
   };
 }
 
+/** Fiche créée puis abandonnée sans aucune saisie. */
+export function isBlankProduct(product: Product): boolean {
+  return (
+    product.name.trim() === "" &&
+    product.barcode.trim() === "" &&
+    product.supplierCode.trim() === "" &&
+    product.priceCents === 0 &&
+    product.netWeightGrams === null &&
+    product.components.every(
+      (component) =>
+        component.name.trim() === "" && component.ingredients.trim() === "",
+    ) &&
+    product.nutrition.length === 0
+  );
+}
+
 export function compositionOf(source: Composition): Composition {
   return {
     name: source.name,

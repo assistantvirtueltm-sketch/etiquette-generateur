@@ -8,6 +8,7 @@ import {
   formatPrice,
   formatWeight,
   hasBlockingIssue,
+  isBlankProduct,
   labelDates,
   parseNumber,
   netQuantityFigureHeightMm,
@@ -83,6 +84,15 @@ describe("productIssues", () => {
     expect(hasBlockingIssue(productIssues({ ...painAuChocolat(), shelfLifeDays: -1 }))).toBe(true);
     expect(hasBlockingIssue(productIssues({ ...painAuChocolat(), shelfLifeDays: 91 }))).toBe(true);
     expect(hasBlockingIssue(productIssues({ ...painAuChocolat(), shelfLifeDays: 0 }))).toBe(false);
+  });
+});
+
+describe("isBlankProduct", () => {
+  it("reconnaît une fiche ouverte puis abandonnée sans saisie", () => {
+    expect(isBlankProduct(emptyProduct())).toBe(true);
+    expect(isBlankProduct({ ...emptyProduct(), name: "P" })).toBe(false);
+    expect(isBlankProduct({ ...emptyProduct(), netWeightGrams: 220 })).toBe(false);
+    expect(isBlankProduct(painAuChocolat())).toBe(false);
   });
 });
 
