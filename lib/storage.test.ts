@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assortiment, painAuChocolat, SAMPLE_SETTINGS } from "./fixtures";
 import {
   applyImport,
+  contentChanged,
   DEFAULT_SETTINGS,
   emptyLibrary,
   EXPORT_FORMAT,
@@ -10,6 +11,7 @@ import {
   loadLibrary,
   migrate,
   parseImport,
+  recordPrint,
   referenceKey,
   saveLibrary,
   serializeLibrary,
@@ -101,6 +103,7 @@ describe("migrate", () => {
         {
           ...painAuChocolat(),
           pieces: -3,
+          netWeightGrams: 0,
           priceCents: "trois euros",
           shelfLifeDays: 2.7,
           dateKind: "demain",
@@ -110,11 +113,13 @@ describe("migrate", () => {
       settings: {
         offsetXMm: "nope",
         minXHeightMm: 0.5,
+        orientation: "de travers",
         logo: { dataUrl: "javascript:alert(1)", widthPx: 10, heightPx: 10 },
       },
     });
     const [product] = library.products;
     expect(product.pieces).toBe(1);
+    expect(product.netWeightGrams).toBeNull();
     expect(product.priceCents).toBe(0);
     expect(product.shelfLifeDays).toBe(2);
     expect(product.dateKind).toBe("dlc");
@@ -123,6 +128,7 @@ describe("migrate", () => {
     expect(product.nutrition[0].salt).toBe(0.9);
     expect(library.settings.offsetXMm).toBe(DEFAULT_SETTINGS.offsetXMm);
     expect(library.settings.minXHeightMm).toBe(1.2);
+    expect(library.settings.orientation).toBe("landscape");
     expect(library.settings.logo).toBeNull();
   });
 
@@ -238,6 +244,75 @@ describe("référentiel", () => {
 
   it("ignore une composition sans nom", () => {
     expect(upsertReference([], { ...painAuChocolat(), name: " " })).toEqual([]);
+  });
+});
+
+describe("suivi des sauvegardes", () => {
+  it("ne met pas le suivi du poste dans le fichier exporté", () => {
+    const library = sampleLibrary();
+    library.backup = { ...library.backup, lastExportAt: "2026-09-01T00:00:00.000Z" };
+    expect(JSON.parse(serializeLibrary(library)).backup).toBeUndefined();
+  });
+
+  it("démarre le compte à rebours pour une base antérieure au suivi", () => {
+    const { library } = migrate({ products: [painAuChocolat()] });
+    expect(library.backup.unsavedSince).not.toBeNull();
+    expect(migrate({ products: [] }).library.backup.unsavedSince).toBeNull();
+  });
+
+  it("garde le suivi du poste lors d'un import", () => {
+    const current = sampleLibrary();
+    current.backup = { ...current.backup, intervalDays: 14 };
+    for (const mode of ["merge", "replace"] as const) {
+      expect(applyImport(current, sampleLibrary(), mode).library.backup.intervalDays).toBe(14);
+    }
+  });
+
+  it("ne compte comme modification que le contenu", () => {
+    const library = sampleLibrary();
+    expect(contentChanged(library, { ...library, backup: { ...library.backup } })).toBe(false);
+    expect(contentChanged(library, { ...library, products: [...library.products] })).toBe(true);
+    expect(
+      contentChanged(library, { ...library, settings: { ...library.settings, offsetXMm: 9 } }),
+    ).toBe(true);
+  });
+});
+
+describe("quantités de la dernière impression", () => {
+  it("ne garde que les quantités positives", () => {
+    const last = recordPrint({ a: 8, b: 0, c: -2, d: 1.5 }, new Date("2026-09-25T06:00:00.000Z"));
+    expect(last).toEqual({
+      printedAt: "2026-09-25T06:00:00.000Z",
+      quantities: { a: 8 },
+    });
+  });
+
+  it("survit à un rechargement et écarte l'illisible", () => {
+    stubStorage();
+    const library = sampleLibrary();
+    library.lastPrint = recordPrint({ "pain-au-chocolat": 16 }, new Date());
+    saveLibrary(library);
+    expect(loadLibrary().library.lastPrint).toEqual(library.lastPrint);
+    expect(migrate({ lastPrint: { printedAt: "hier", quantities: { a: 1 } } }).library.lastPrint)
+      .toBeNull();
+  });
+
+  it("reste propre au poste : ni exportée, ni écrasée par un import", () => {
+    const current = sampleLibrary();
+    current.lastPrint = recordPrint({ assortiment: 4 }, new Date());
+    expect(JSON.parse(serializeLibrary(current)).lastPrint).toBeUndefined();
+    for (const mode of ["merge", "replace"] as const) {
+      expect(applyImport(current, sampleLibrary(), mode).library.lastPrint).toEqual(
+        current.lastPrint,
+      );
+    }
+  });
+
+  it("n'est pas une modification à sauvegarder", () => {
+    const library = sampleLibrary();
+    expect(
+      contentChanged(library, { ...library, lastPrint: recordPrint({ a: 1 }, new Date()) }),
+    ).toBe(false);
   });
 });
 

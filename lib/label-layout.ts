@@ -54,12 +54,12 @@ export interface PurchaseLink {
  * Agipa (Apli) réf. 118987 — 8 étiquettes de 99,1 × 67,7 mm par feuille A4,
  * coins arrondis, 2 colonnes × 4 lignes.
  *
- * ⚠️ Cotes PROVISOIRES : le gabarit du fabricant n'a pas encore été relevé
- * (cf. `docs/agipa-118987-gabarit.md`). Ce sont les cotes de la matrice
- * standard de ce format (2 × 4, gouttière verticale de 2,5 mm entre les
- * colonnes, lignes jointives, matrice centrée : marges 4,65 / 13,1 mm). À
- * confirmer sur le gabarit Word d'Apli, puis à figer par un test comme pour
- * l'ancienne 118990.
+ * Cotes relevées dans le gabarit Word du fabricant
+ * (`docs/agipa-118987-gabarit.doc`, cf. `docs/agipa-118987-gabarit.md`) :
+ * pas horizontal de 101,6 mm (gouttière de 2,5 mm entre les colonnes), lignes
+ * jointives de 67,7 mm, matrice de 200,7 × 270,8 mm centrée sur la feuille —
+ * ce qui redonne les marges du gabarit (4,66 / 13,11 mm) à 0,01 mm près.
+ * Figées par les tests « colle aux bornes en twips du gabarit ».
  */
 export const AGIPA_118987: SheetSpec = {
   id: "agipa-118987",
@@ -117,6 +117,44 @@ export function sheetGapsMm(spec: SheetSpec): {
   return {
     columnGapMm: spec.columnPitchMm - spec.labelWidthMm,
     rowGapMm: spec.rowPitchMm - spec.labelHeightMm,
+  };
+}
+
+/**
+ * Sens de lecture de l'étiquette. Le support ne tourne pas : en portrait, le
+ * contenu est composé dans un cadre hauteur × largeur puis tourné de 90° dans
+ * le sens horaire à l'impression (le haut du texte vers le bord droit de
+ * l'étiquette).
+ */
+export type Orientation = "landscape" | "portrait";
+
+/** Cadre de mise en page d'une étiquette, dans son sens de lecture. */
+export function labelBoxMm(
+  spec: SheetSpec,
+  orientation: Orientation,
+): { widthMm: number; heightMm: number } {
+  // Le « paysage » est le sens de la planche : l'étiquette telle que posée.
+  return orientation === "landscape"
+    ? { widthMm: spec.labelWidthMm, heightMm: spec.labelHeightMm }
+    : { widthMm: spec.labelHeightMm, heightMm: spec.labelWidthMm };
+}
+
+/**
+ * Passe d'un rectangle du cadre de lecture au repère de l'étiquette posée sur
+ * la planche (origine en haut à gauche). Identité en paysage ; en portrait,
+ * rotation de 90° horaire : (u, v) → (largeur − v, u).
+ */
+export function boxToSlotRect(
+  spec: SheetSpec,
+  orientation: Orientation,
+  rect: RectMm,
+): RectMm {
+  if (orientation === "landscape") return rect;
+  return {
+    xMm: spec.labelWidthMm - (rect.yMm + rect.heightMm),
+    yMm: rect.xMm,
+    widthMm: rect.heightMm,
+    heightMm: rect.widthMm,
   };
 }
 
@@ -203,6 +241,17 @@ export function ptToMm(valuePt: number): number {
  * police : corps (pt) = hauteur d'x (pt) / 0,523.
  */
 export const HELVETICA_X_HEIGHT_EM = 0.523;
+
+/**
+ * Hauteur des chiffres de l'Helvetica en fraction du corps (≈ 0,70, valeur
+ * prise un peu basse pour rester du bon côté du minimum légal).
+ */
+export const HELVETICA_FIGURE_HEIGHT_EM = 0.7;
+
+/** Corps (pt) donnant des chiffres d'au moins `heightMm` de haut. */
+export function figureFontSizePt(heightMm: number): number {
+  return mmToPt(heightMm) / HELVETICA_FIGURE_HEIGHT_EM;
+}
 
 /** Corps minimal (pt) pour respecter une hauteur d'x donnée (mm). */
 export function minFontSizePt(xHeightMm: number): number {

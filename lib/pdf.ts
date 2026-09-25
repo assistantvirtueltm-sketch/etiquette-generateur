@@ -5,11 +5,19 @@
  * des rectangles vectoriels, les textes des polices standard. Seul le logo du
  * magasin est une image ; le code-barres n'en est jamais une.
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from "pdf-lib";
+import {
+  degrees,
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  type PDFFont,
+  type PDFImage,
+} from "pdf-lib";
 
 import {
   A4_MM,
   AGIPA_118987,
+  boxToSlotRect,
   labelSlot,
   labelsPerSheet,
   mmToPt,
@@ -82,8 +90,14 @@ function isoDay(date: Date): string {
   return `${day.getFullYear()}-${mm}-${dd}`;
 }
 
+/**
+ * Dessine une étiquette dans son emplacement. En portrait, le contenu (composé
+ * dans le sens de lecture) est tourné de 90° horaire : les barres restent des
+ * rectangles alignés sur les axes, textes et logo reçoivent une rotation.
+ */
 function drawLabel(
   page: ReturnType<PDFDocument["addPage"]>,
+  spec: SheetSpec,
   content: LabelContent,
   slotX: number,
   slotY: number,
@@ -92,30 +106,39 @@ function drawLabel(
 ) {
   const pageHeightPt = page.getHeight();
   const black = rgb(0, 0, 0);
+  const portrait = content.orientation === "portrait";
+  /** Point (u, v) du cadre de lecture → coordonnées PDF de la page. */
+  const toPage = (u: number, v: number) =>
+    portrait
+      ? { x: mmToPt(slotX + spec.labelWidthMm - v), y: pageHeightPt - mmToPt(slotY + u) }
+      : { x: mmToPt(slotX + u), y: pageHeightPt - mmToPt(slotY + v) };
+
   for (const bar of content.bars) {
+    const rect = boxToSlotRect(spec, content.orientation, bar);
     page.drawRectangle({
-      x: mmToPt(slotX + bar.xMm),
-      y: pageHeightPt - mmToPt(slotY + bar.yMm + bar.heightMm),
-      width: mmToPt(bar.widthMm),
-      height: mmToPt(bar.heightMm),
+      x: mmToPt(slotX + rect.xMm),
+      y: pageHeightPt - mmToPt(slotY + rect.yMm + rect.heightMm),
+      width: mmToPt(rect.widthMm),
+      height: mmToPt(rect.heightMm),
       color: black,
     });
   }
   for (const text of content.texts) {
     page.drawText(text.text, {
-      x: mmToPt(slotX + text.xMm),
-      y: pageHeightPt - mmToPt(slotY + text.baselineYMm),
+      ...toPage(text.xMm, text.baselineYMm),
       size: text.sizePt,
       font: text.bold ? fonts.bold : fonts.regular,
       color: black,
+      rotate: degrees(portrait ? -90 : 0),
     });
   }
   if (logo && content.logo) {
+    // Origine d'une image : son coin bas-gauche dans le sens de lecture.
     page.drawImage(logo, {
-      x: mmToPt(slotX + content.logo.xMm),
-      y: pageHeightPt - mmToPt(slotY + content.logo.yMm + content.logo.heightMm),
+      ...toPage(content.logo.xMm, content.logo.yMm + content.logo.heightMm),
       width: mmToPt(content.logo.widthMm),
       height: mmToPt(content.logo.heightMm),
+      rotate: degrees(portrait ? -90 : 0),
     });
   }
 }
@@ -176,7 +199,7 @@ export async function buildPrintPdf(
         page = doc.addPage([mmToPt(A4_MM.widthMm), mmToPt(A4_MM.heightMm)]);
       }
       const slot = labelSlot(spec, slotIndex, offset);
-      drawLabel(page!, content, slot.xMm, slot.yMm, fonts, logo);
+      drawLabel(page!, spec, content, slot.xMm, slot.yMm, fonts, logo);
     }
   });
 

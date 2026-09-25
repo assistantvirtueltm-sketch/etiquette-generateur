@@ -80,6 +80,22 @@ describe("library store", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("marque les modifications de contenu comme non sauvegardées", () => {
+    stubStorage();
+    expect(getLibraryState().library.backup.unsavedSince).toBeNull();
+    // Changer seulement le suivi des sauvegardes n'est pas une modification.
+    updateLibrary((current) => ({
+      ...current,
+      backup: { ...current.backup, intervalDays: 7 },
+    }));
+    expect(getLibraryState().library.backup.unsavedSince).toBeNull();
+    updateLibrary((current) => ({
+      ...current,
+      products: [product("Thé", "96385074")],
+    }));
+    expect(getLibraryState().library.backup.unsavedSince).not.toBeNull();
+  });
+
   it("garde la mise à jour en mémoire et signale l'échec quand le storage refuse", () => {
     vi.stubGlobal("window", {
       localStorage: {

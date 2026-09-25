@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { PrintView } from "@/components/PrintView";
-import { ProductsView } from "@/components/ProductsView";
+import { ProductsView, type Editing } from "@/components/ProductsView";
 import { SettingsView } from "@/components/SettingsView";
 import { downloadJson, downloadPdf } from "@/lib/download";
 import { AGIPA_118987 } from "@/lib/label-layout";
@@ -21,10 +21,20 @@ import {
   createMeasurer,
   LabelRefusedError,
 } from "@/lib/pdf";
-import type { Product } from "@/lib/product";
+import { buttonClass, primaryButtonClass } from "@/components/ui";
+import { backupReminder, markExported, snooze } from "@/lib/backup";
+import {
+  getFolderBackupStatus,
+  getServerFolderBackupStatus,
+  initFolderBackup,
+  reactivateFolderBackup,
+  subscribeFolderBackup,
+} from "@/lib/folder-backup-store";
+import { formatDate, isBlankProduct, type Product } from "@/lib/product";
 import {
   applyImport,
   parseImport,
+  recordPrint,
   serializeLibrary,
   serializeReferences,
   upsertReference,
@@ -62,13 +72,20 @@ export default function Page() {
   );
   const [env, setEnv] = useState<ClientEnv | null>(null);
   const [tab, setTab] = useState<Tab>("print");
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [editing, setEditing] = useState<Editing>(null);
+  // null = pas encore touchées aujourd'hui : on reprend celles de la dernière
+  // impression (« même quantité que la veille »).
+  const [typedQuantities, setQuantities] = useState<Record<string, number> | null>(
+    null,
+  );
+  const quantities = typedQuantities ?? library.lastPrint?.quantities ?? {};
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
 
   // Les métriques de police servent à la fois au PDF et à l'aperçu.
   useEffect(() => {
     createMeasurer().then((measure) => setEnv({ measure, today: new Date() }));
+    void initFolderBackup();
   }, []);
 
   const activeProducts = useMemo(
@@ -86,23 +103,41 @@ export default function Page() {
     }));
   }
 
+  /** Écriture immédiate (chaque frappe de l'éditeur). */
   function saveProduct(product: Product) {
     updateLibrary((current) => {
       const exists = current.products.some((item) => item.id === product.id);
-      const hasComposition = product.components.some(
-        (component) => component.ingredients.trim() !== "",
-      );
       return {
         ...current,
         products: exists
           ? current.products.map((item) => (item.id === product.id ? product : item))
           : [...current.products, product],
-        references: hasComposition
-          ? upsertReference(current.references, product)
-          : current.references,
       };
     });
-    setStatus({ kind: "info", text: `Fiche « ${product.name} » enregistrée.` });
+  }
+
+  /**
+   * Fermeture de l'éditeur. Le référentiel n'est alimenté qu'ici : à chaque
+   * frappe, la clé (le nom) changerait et créerait une fiche par lettre. Une
+   * fiche restée entièrement vide est retirée.
+   */
+  function closeProduct(productId: string) {
+    updateLibrary((current) => {
+      const product = current.products.find((item) => item.id === productId);
+      if (!product) return current;
+      if (isBlankProduct(product)) {
+        return {
+          ...current,
+          products: current.products.filter((item) => item.id !== productId),
+        };
+      }
+      const hasComposition = product.components.some(
+        (component) => component.ingredients.trim() !== "",
+      );
+      return hasComposition
+        ? { ...current, references: upsertReference(current.references, product) }
+        : current;
+    });
   }
 
   function removeProduct(product: Product) {
@@ -121,8 +156,17 @@ export default function Page() {
       .filter((job) => job.count > 0);
     setBusy(true);
     try {
-      const pdf = await buildPrintPdf(jobs, library.settings, new Date(), SPEC);
+      const printedAt = new Date();
+      const pdf = await buildPrintPdf(jobs, library.settings, printedAt, SPEC);
       downloadPdf(pdf.bytes, pdf.fileName);
+      // Base des quantités proposées à la prochaine ouverture.
+      updateLibrary((current) => ({
+        ...current,
+        lastPrint: recordPrint(
+          Object.fromEntries(jobs.map((job) => [job.product.id, job.count])),
+          printedAt,
+        ),
+      }));
       setStatus({
         kind: "info",
         text: [
@@ -182,7 +226,7 @@ export default function Page() {
         summary = `Import terminé : ${result.productsAdded} fiche(s) ajoutée(s), ${result.productsUpdated} mise(s) à jour ; référentiel : ${result.referencesAdded} ajoutée(s), ${result.referencesUpdated} mise(s) à jour.`;
         return result.library;
       });
-      setQuantities({});
+      setQuantities(null);
       setStatus({
         kind: parsed.result.dropped > 0 ? "error" : "info",
         text:
@@ -192,6 +236,33 @@ export default function Page() {
       });
     });
   }
+
+  /** Export complet : télécharge le JSON et note la sauvegarde sur ce poste. */
+  function exportAll() {
+    downloadJson(
+      serializeLibrary(library),
+      `etiquettes-bvp-sauvegarde-${isoToday()}.json`,
+    );
+    updateLibrary((current) => ({
+      ...current,
+      backup: markExported(current.backup, new Date()),
+    }));
+  }
+
+  const folder = useSyncExternalStore(
+    subscribeFolderBackup,
+    getFolderBackupStatus,
+    getServerFolderBackupStatus,
+  );
+  const folderPaused = folder.folderName !== null && folder.permission !== "granted";
+
+  const reminder = env
+    ? backupReminder(
+        library.backup,
+        library.products.length > 0 || library.references.length > 0,
+        env.today,
+      )
+    : null;
 
   const notice =
     storeError ??
@@ -242,6 +313,60 @@ export default function Page() {
         </p>
       ) : null}
 
+      {folderPaused ? (
+        <div
+          role="alert"
+          className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p>
+            <strong>Sauvegarde automatique en pause.</strong> Le navigateur
+            demande de réautoriser l&apos;écriture dans le dossier «{" "}
+            {folder.folderName} ».
+          </p>
+          <button
+            type="button"
+            className={primaryButtonClass}
+            onClick={() => void reactivateFolderBackup()}
+          >
+            Réactiver
+          </button>
+        </div>
+      ) : null}
+
+      {reminder ? (
+        <div
+          role="alert"
+          className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p>
+            <strong>Pensez à sauvegarder vos fiches.</strong>{" "}
+            {reminder.daysSinceExport === null
+              ? "Aucune sauvegarde JSON n'a encore été faite sur ce poste"
+              : `Dernière sauvegarde il y a ${reminder.daysSinceExport} jour${reminder.daysSinceExport > 1 ? "s" : ""}`}
+            , et des modifications attendent depuis le{" "}
+            {formatDate(reminder.unsavedSince)}. Un nettoyage du navigateur les
+            effacerait.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" className={primaryButtonClass} onClick={exportAll}>
+              Sauvegarder maintenant
+            </button>
+            <button
+              type="button"
+              className={buttonClass}
+              onClick={() =>
+                updateLibrary((current) => ({
+                  ...current,
+                  backup: snooze(current.backup, new Date()),
+                }))
+              }
+            >
+              Me le rappeler demain
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {status ? (
         <p
           aria-live="polite"
@@ -268,11 +393,17 @@ export default function Page() {
           measure={env.measure}
           today={env.today}
           quantities={quantities}
+          prefilledFrom={
+            typedQuantities === null && library.lastPrint
+              ? new Date(library.lastPrint.printedAt)
+              : null
+          }
           onQuantityChange={(productId, count) =>
-            setQuantities((current) => ({ ...current, [productId]: count }))
+            setQuantities({ ...quantities, [productId]: count })
           }
           onReset={() => setQuantities({})}
           onPrint={() => void print()}
+          onOrientationChange={(orientation) => updateSettings({ orientation })}
           busy={busy}
         />
       ) : tab === "products" ? (
@@ -281,7 +412,10 @@ export default function Page() {
           spec={SPEC}
           measure={env.measure}
           today={env.today}
-          onSave={saveProduct}
+          editing={editing}
+          onEditingChange={setEditing}
+          onChange={saveProduct}
+          onClose={closeProduct}
           onRemove={removeProduct}
           onToggleActive={(product, active) =>
             updateLibrary((current) => ({
@@ -299,11 +433,12 @@ export default function Page() {
           busy={busy}
           onSettingsChange={updateSettings}
           onCalibration={() => void printCalibration()}
-          onExportAll={() =>
-            downloadJson(
-              serializeLibrary(library),
-              `etiquettes-bvp-sauvegarde-${isoToday()}.json`,
-            )
+          onExportAll={exportAll}
+          onBackupIntervalChange={(intervalDays) =>
+            updateLibrary((current) => ({
+              ...current,
+              backup: { ...current.backup, intervalDays, snoozedUntil: null },
+            }))
           }
           onExportReferences={() =>
             downloadJson(

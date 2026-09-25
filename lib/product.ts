@@ -61,6 +61,11 @@ export interface Product extends Composition {
   symbology: SymbologyChoice;
   /** Nombre de pièces du lot (vente à la pièce). */
   pieces: number;
+  /**
+   * Poids net nominal du lot, en grammes (quantité nette + base du prix au
+   * kilo). null = non renseigné : ni poids ni prix au kilo imprimés.
+   */
+  netWeightGrams: number | null;
   /** Prix de vente du lot, en centimes. */
   priceCents: number;
   dateKind: DateKind;
@@ -131,6 +136,7 @@ export function emptyProduct(now = new Date().toISOString()): Product {
     barcode: "",
     symbology: "auto",
     pieces: 1,
+    netWeightGrams: null,
     priceCents: 0,
     dateKind: "dlc",
     shelfLifeDays: 3,
@@ -144,6 +150,22 @@ export function emptyProduct(now = new Date().toISOString()): Product {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/** Fiche créée puis abandonnée sans aucune saisie. */
+export function isBlankProduct(product: Product): boolean {
+  return (
+    product.name.trim() === "" &&
+    product.barcode.trim() === "" &&
+    product.supplierCode.trim() === "" &&
+    product.priceCents === 0 &&
+    product.netWeightGrams === null &&
+    product.components.every(
+      (component) =>
+        component.name.trim() === "" && component.ingredients.trim() === "",
+    ) &&
+    product.nutrition.length === 0
+  );
 }
 
 export function compositionOf(source: Composition): Composition {
@@ -170,6 +192,7 @@ export interface ProductIssue {
 
 export const SUPPLIER_CODE = /^(\d{6}|\d{9})$/;
 export const MAX_SHELF_LIFE_DAYS = 90;
+export const MAX_NET_WEIGHT_GRAMS = 10000;
 
 function nutritionComplete(table: NutritionTable): boolean {
   return NUTRIENTS.every(
@@ -195,6 +218,17 @@ export function productIssues(product: Product): ProductIssue[] {
 
   if (!Number.isInteger(product.pieces) || product.pieces < 1) {
     error("Nombre de pièces : un entier supérieur ou égal à 1.");
+  }
+  if (product.netWeightGrams === null) {
+    warning(
+      "Poids net non renseigné : ni le poids ni le prix au kilo ne seront imprimés.",
+    );
+  } else if (
+    !Number.isFinite(product.netWeightGrams) ||
+    product.netWeightGrams <= 0 ||
+    product.netWeightGrams > MAX_NET_WEIGHT_GRAMS
+  ) {
+    error(`Poids net : entre 1 et ${MAX_NET_WEIGHT_GRAMS} g.`);
   }
   if (!Number.isInteger(product.priceCents) || product.priceCents <= 0) {
     error("Prix de vente manquant.");
@@ -330,6 +364,34 @@ export function parseNumber(input: string): number | null | undefined {
   if (cleaned === "") return null;
   if (!/^\d+(\.\d+)?$/.test(cleaned)) return undefined;
   return Number(cleaned);
+}
+
+/** « 220 g », « 1,25 kg ». */
+export function formatWeight(grams: number): string {
+  return grams >= 1000
+    ? `${formatNumber(grams / 1000)} kg`
+    : `${formatNumber(grams)} g`;
+}
+
+/** Prix au kilo en centimes, arrondi au centime ; null sans poids. */
+export function pricePerKgCents(
+  priceCents: number,
+  netWeightGrams: number | null,
+): number | null {
+  if (netWeightGrams === null || !(netWeightGrams > 0)) return null;
+  return Math.round((priceCents * 1000) / netWeightGrams);
+}
+
+/**
+ * Hauteur minimale des chiffres de la quantité nette (préemballages,
+ * directive 76/211/CEE, annexe I, 3.1) : 2 mm jusqu'à 50 g, 3 mm jusqu'à
+ * 200 g, 4 mm jusqu'à 1 kg, 6 mm au-delà.
+ */
+export function netQuantityFigureHeightMm(grams: number): number {
+  if (grams <= 50) return 2;
+  if (grams <= 200) return 3;
+  if (grams <= 1000) return 4;
+  return 6;
 }
 
 export function piecesLabel(pieces: number): string {

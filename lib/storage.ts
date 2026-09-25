@@ -19,6 +19,13 @@ import {
   type ProductComponent,
   type ReferenceSheet,
 } from "./product";
+import {
+  DEFAULT_BACKUP,
+  markChanged,
+  migrateBackup,
+  type BackupState,
+} from "./backup";
+import type { Orientation } from "./label-layout";
 import type { SymbologyChoice } from "./symbology";
 
 export const STORAGE_KEY = "etiquettes-bvp:library:v2";
@@ -55,6 +62,8 @@ export interface LibrarySettings {
   store: StoreInfo;
   logo: StoreLogo | null;
   minXHeightMm: MinXHeightMm;
+  /** Sens de lecture des étiquettes imprimées. */
+  orientation: Orientation;
 }
 
 export interface Library {
@@ -63,6 +72,53 @@ export interface Library {
   /** Compositions réutilisables (autocomplétion des fiches). */
   references: ReferenceSheet[];
   settings: LibrarySettings;
+  /**
+   * Suivi des sauvegardes JSON, propre à ce poste : jamais exporté, jamais
+   * écrasé par un import.
+   */
+  backup: BackupState;
+  /**
+   * Quantités de la dernière impression, reprises le lendemain dans la
+   * mercuriale. Propre au poste comme `backup`.
+   */
+  lastPrint: LastPrint | null;
+}
+
+export interface LastPrint {
+  printedAt: string;
+  /** Nombre d'étiquettes par identifiant de fiche (> 0 uniquement). */
+  quantities: Record<string, number>;
+}
+
+/** Mémorise une impression réussie ; ignore les quantités nulles. */
+export function recordPrint(
+  quantities: Readonly<Record<string, number>>,
+  now: Date,
+): LastPrint {
+  return {
+    printedAt: now.toISOString(),
+    quantities: Object.fromEntries(
+      Object.entries(quantities).filter(
+        ([, count]) => Number.isInteger(count) && count > 0,
+      ),
+    ),
+  };
+}
+
+function migrateLastPrint(raw: unknown): LastPrint | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+  const printedAt = asString(record.printedAt);
+  if (Number.isNaN(Date.parse(printedAt))) return null;
+  const quantities = asRecord(record.quantities) ?? {};
+  return recordPrint(
+    Object.fromEntries(
+      Object.entries(quantities).filter(
+        (entry): entry is [string, number] => typeof entry[1] === "number",
+      ),
+    ),
+    new Date(printedAt),
+  );
 }
 
 export const DEFAULT_SETTINGS: LibrarySettings = {
@@ -71,6 +127,7 @@ export const DEFAULT_SETTINGS: LibrarySettings = {
   store: { name: "", address: "" },
   logo: null,
   minXHeightMm: 1.2,
+  orientation: "landscape",
 };
 
 export function emptyLibrary(): Library {
@@ -79,6 +136,8 @@ export function emptyLibrary(): Library {
     products: [],
     references: [],
     settings: { ...DEFAULT_SETTINGS, store: { ...DEFAULT_SETTINGS.store } },
+    backup: { ...DEFAULT_BACKUP },
+    lastPrint: null,
   };
 }
 
@@ -195,6 +254,8 @@ function migrateProduct(raw: unknown, now: string): Product | null {
     barcode,
     symbology,
     pieces: asInteger(record.pieces, 1, 1),
+    netWeightGrams:
+      asNullableNumber(record.netWeightGrams) || null,
     priceCents: asInteger(record.priceCents, 0, 0),
     dateKind,
     shelfLifeDays: asInteger(record.shelfLifeDays, 3, 0),
@@ -236,6 +297,7 @@ function migrateSettings(raw: unknown): LibrarySettings {
     store: { name: asString(store.name), address: asString(store.address) },
     logo: migrateLogo(record.logo),
     minXHeightMm: record.minXHeightMm === 0.9 ? 0.9 : 1.2,
+    orientation: record.orientation === "portrait" ? "portrait" : "landscape",
   };
 }
 
@@ -273,6 +335,13 @@ export function migrate(raw: unknown): MigrationResult {
       products,
       references,
       settings: migrateSettings(record.settings),
+      backup:
+        // Base antérieure au suivi des sauvegardes : rien ne prouve qu'elle a
+        // été exportée, le compte à rebours du rappel part de maintenant.
+        record.backup === undefined && (products.length > 0 || references.length > 0)
+          ? markChanged(DEFAULT_BACKUP, new Date())
+          : migrateBackup(record.backup),
+      lastPrint: migrateLastPrint(record.lastPrint),
     },
     dropped,
   };
@@ -312,10 +381,27 @@ export function saveLibrary(library: Library): { ok: boolean; error?: string } {
 
 /** Sauvegarde complète : produits, référentiel et réglages du magasin. */
 export function serializeLibrary(library: Library, now = new Date()): string {
+  // Suivi des sauvegardes et dernière impression sont propres au poste : ils
+  // ne voyagent pas.
+  const { backup: _backup, lastPrint: _lastPrint, ...content } = library;
+  void _backup;
+  void _lastPrint;
   return JSON.stringify(
-    { format: EXPORT_FORMAT, exportedAt: now.toISOString(), ...library },
+    { format: EXPORT_FORMAT, exportedAt: now.toISOString(), ...content },
     null,
     2,
+  );
+}
+
+/**
+ * Le contenu (fiches, référentiel, réglages) a-t-il changé ? Sert à ouvrir la
+ * période « non sauvegardé » ; le suivi des sauvegardes lui-même n'en est pas.
+ */
+export function contentChanged(previous: Library, next: Library): boolean {
+  return (
+    previous.products !== next.products ||
+    previous.references !== next.references ||
+    JSON.stringify(previous.settings) !== JSON.stringify(next.settings)
   );
 }
 
@@ -411,6 +497,8 @@ export function applyImport(
     return {
       library: {
         ...incoming,
+        backup: current.backup,
+        lastPrint: current.lastPrint,
         settings: {
           ...incoming.settings,
           offsetXMm: current.settings.offsetXMm,

@@ -14,6 +14,14 @@ imprimer tel quel.
   réimporter sur le même poste ou sur un autre ; export du **référentiel seul**
   (compositions sans code caisse ni prix) pour partager des fiches entre
   magasins.
+- **Sauvegarde automatique dans un dossier** (Chrome / Edge) : choisir une
+  fois un dossier synchronisé avec le drive du magasin (OneDrive, Google
+  Drive, Dropbox…) ; chaque modification y est écrite
+  (`etiquettes-bvp-sauvegarde.json` + une copie par jour), sans serveur.
+- **Rappel de sauvegarde** : quand des modifications attendent depuis plus de
+  3 jours (réglable) sans export complet, un bandeau le rappelle à
+  l'ouverture de l'app, avec « Sauvegarder maintenant » et « Me le rappeler
+  demain ». Suivi propre à chaque poste.
 - Code-barres **vectoriel** (EAN-13 de la caisse), net à toutes les
   résolutions.
 
@@ -25,8 +33,14 @@ paragraphe par composant d'assortiment), allergènes **en gras**, traces
 (« Produit décongelé, ne pas recongeler », conservation, « Cuit et emballé le
 même jour »). Pied : code-barres, date d'emballage, DLC (« À consommer
 jusqu'au ») ou DDM (« À consommer de préférence avant le ») calculée à partir
-de la durée de vie du produit, nombre de pièces, référence fournisseur, prix ;
+de la durée de vie du produit, nombre de pièces, référence fournisseur, poids
+net (chiffres à la hauteur légale : 4 mm entre 200 g et 1 kg), prix au kilo
+calculé depuis le poids net et le prix, prix de vente ;
 nom et adresse du magasin.
+
+Un interrupteur **Paysage / Portrait** (onglet Impression, mémorisé) choisit
+le sens de lecture : en portrait, le contenu de chaque étiquette est tourné
+d'un quart de tour sur la même planche.
 
 **Garde-fous :**
 
@@ -50,8 +64,10 @@ responsable qualité.
 2. **Fiches produits** : créer les fiches à partir des cartons fournisseurs.
    En tapant la dénomination, les fiches du référentiel sont proposées et
    leur composition peut être reprise. Coller le code-barres créé en caisse.
-3. **Impression du jour** : saisir le nombre d'étiquettes de chaque produit
-   actif. L'app indique combien de feuilles mettre dans l'imprimante, puis
+   Tout est enregistré à chaque frappe (pas de bouton « Enregistrer ») ;
+   « Annuler mes modifications » revient à la fiche telle qu'à l'ouverture.
+3. **Impression du jour** : les quantités de la dernière impression sont
+   reprises ; les ajuster pour chaque produit actif. L'app indique combien de feuilles mettre dans l'imprimante, puis
    télécharge le PDF.
 4. Imprimer **à 100 %** : dans la boîte de dialogue d'impression, choisir
    « Taille réelle » / « 100 % » et **désactiver** « Ajuster à la page ».
@@ -72,5 +88,5 @@ npm run build      # export statique dans out/
 Export statique (`output: "export"`) : Vercel détecte Next.js et sert `out/`
 sans configuration, aucun runtime serveur n'est requis.
 
-⚠️ Les cotes de la planche Agipa 118987 sont provisoires tant que le gabarit du
-fabricant n'a pas été relevé : voir `docs/agipa-118987-gabarit.md`.
+Les cotes de la planche Agipa 118987 sont relevées sur le gabarit du fabricant :
+voir `docs/agipa-118987-gabarit.md`.

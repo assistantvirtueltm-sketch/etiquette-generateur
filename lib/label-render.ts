@@ -13,15 +13,21 @@
  */
 import type { BarPattern } from "./barcode-modules";
 import {
+  figureFontSizePt,
   LABEL_STYLE,
+  labelBoxMm,
   minFontSizePt,
+  type Orientation,
   ptToMm,
   type SheetSpec,
 } from "./label-layout";
 import {
   formatNumber,
-  piecesLabel,
   formatPrice,
+  formatWeight,
+  netQuantityFigureHeightMm,
+  piecesLabel,
+  pricePerKgCents,
   type LabelDates,
   type NutritionTable,
   type Product,
@@ -58,6 +64,11 @@ export interface LabelText {
 }
 
 export interface LabelContent {
+  /** Sens de lecture de l'étiquette. */
+  orientation: Orientation;
+  /** Cadre de la mise en page, dans le sens de lecture. */
+  widthMm: number;
+  heightMm: number;
   /** Barres noires à remplir. */
   bars: readonly LabelRect[];
   texts: readonly LabelText[];
@@ -92,6 +103,8 @@ export interface BuildLabelContentInput {
   logoAspect: number | null;
   /** Hauteur d'x minimale des mentions obligatoires. */
   minXHeightMm: number;
+  /** Paysage par défaut (sens du support). */
+  orientation?: Orientation;
   measure: MeasureText;
 }
 
@@ -226,6 +239,11 @@ function emitBlock(
 
 export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   const { spec, product, pattern, dates, store, measure } = input;
+  const orientation = input.orientation ?? "landscape";
+  const box = labelBoxMm(spec, orientation);
+  // En portrait, la colonne de droite serait trop étroite : le pied s'empile
+  // (infos, poids et prix, puis code-barres sur toute la largeur).
+  const stacked = orientation === "portrait";
   const errors: string[] = [];
   const warnings: string[] = [];
   const sanitized = { changed: false };
@@ -233,8 +251,8 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   const minPt = minFontSizePt(input.minXHeightMm);
   const innerLeft = style.paddingXMm;
   const innerTop = style.paddingYMm;
-  const innerWidth = spec.labelWidthMm - 2 * style.paddingXMm;
-  const innerBottom = spec.labelHeightMm - style.paddingYMm;
+  const innerWidth = box.widthMm - 2 * style.paddingXMm;
+  const innerBottom = box.heightMm - style.paddingYMm;
 
   const texts: LabelText[] = [];
 
@@ -286,7 +304,7 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   // --- Pied : code-barres à gauche, dates / quantité / prix à droite ------
   const totalWithQuietModules =
     pattern.totalModules + pattern.quietLeftModules + pattern.quietRightModules;
-  const barcodeMaxWidth = innerWidth * 0.45;
+  const barcodeMaxWidth = stacked ? innerWidth : innerWidth * 0.45;
   const moduleMm = Math.min(
     style.nominalModuleMm,
     barcodeMaxWidth / totalWithQuietModules,
@@ -303,47 +321,111 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
     style.barsHeightMm + style.gapBarcodeDigitsMm + digitsSizeMm;
 
   const footerPt = Math.max(minPt, 7);
-  const rightX = innerLeft + barcodeWidth + style.gapFooterColumnsMm;
+  const rightX = stacked
+    ? innerLeft
+    : innerLeft + barcodeWidth + style.gapFooterColumnsMm;
   const rightWidth = innerLeft + innerWidth - rightX;
+  const perKg = pricePerKgCents(product.priceCents, product.netWeightGrams);
   const footerParagraphs: Run[][] = [
     [
       { text: "Emballé le ", bold: false },
       { text: dates.packedOn, bold: true },
+      ...(product.supplierCode.trim()
+        ? [{ text: ` – Réf. ${product.supplierCode.trim()}`, bold: false }]
+        : []),
     ],
     [
       { text: `${dates.limitWording} `, bold: false },
       { text: dates.limit, bold: true },
     ],
     [
-      { text: `Quantité : ${piecesLabel(product.pieces)}`, bold: false },
-      ...(product.supplierCode.trim()
-        ? [{ text: ` – Réf. ${product.supplierCode.trim()}`, bold: false }]
-        : []),
+      { text: piecesLabel(product.pieces), bold: false },
+      ...(perKg === null
+        ? []
+        : [{ text: ` – Prix au kg : ${formatPrice(perKg)}`, bold: false }]),
     ],
   ];
   const footerLines = footerParagraphs.flatMap((runs) =>
     wrapRuns(sanitizeRuns(runs, sanitized), rightWidth, footerPt, measure),
   );
   const infoBlock = block(footerLines, footerPt);
-  const priceBlock = block(
-    wrapRuns(
-      [{ text: formatPrice(product.priceCents), bold: true }],
-      rightWidth,
-      style.pricePt,
-      measure,
-    ),
-    style.pricePt,
-  );
-  const footerHeight = Math.max(
-    barcodeHeight,
-    infoBlock.heightMm + priceBlock.heightMm,
-  );
+
+  // Dernière ligne : poids net (chiffres à la hauteur légale) et prix. Sur
+  // une seule ligne quand la place le permet, sinon l'un sous l'autre.
+  const priceText = formatPrice(product.priceCents);
+  const weight =
+    product.netWeightGrams === null
+      ? null
+      : {
+          prefix: "Poids net ",
+          value: formatWeight(product.netWeightGrams),
+          sizePt: Math.max(
+            footerPt,
+            figureFontSizePt(netQuantityFigureHeightMm(product.netWeightGrams)),
+          ),
+        };
+  const pricePt = Math.max(style.pricePt, weight?.sizePt ?? 0);
+  const priceWidth = ptToMm(measure(priceText, pricePt, true));
+  const weightPrefixWidth = weight
+    ? ptToMm(measure(weight.prefix, footerPt, false))
+    : 0;
+  const weightValueWidth = weight
+    ? ptToMm(measure(weight.value, weight.sizePt, true))
+    : 0;
+  const weightWidth = weightPrefixWidth + weightValueWidth;
+  // Placement du poids et du prix. Trois dispositions, de la plus compacte à
+  // la plus sûre :
+  // - « side »    (paysage) : colonne de droite = infos, puis poids + prix ;
+  // - « beside »  (portrait) : infos pleine largeur, puis poids et prix
+  //   empilés à droite du code-barres ;
+  // - « stacked » (portrait, valeurs trop larges) : infos, poids + prix,
+  //   puis code-barres, tout en pleine largeur.
+  const besideX = innerLeft + barcodeWidth + style.gapFooterColumnsMm;
+  const besideWidth = innerLeft + innerWidth - besideX;
+  const besideFits =
+    priceWidth <= besideWidth &&
+    (!weight || Math.max(weightPrefixWidth, weightValueWidth) <= besideWidth);
+  const mode = !stacked ? "side" : besideFits ? "beside" : "stacked";
+
+  // Lignes de chiffres seuls : pas besoin d'interligne au-delà du corps.
+  const priceRowHeight = ptToMm(pricePt);
+  const sameRow =
+    mode !== "beside" &&
+    (!weight || weightWidth + style.gapFooterColumnsMm + priceWidth <= rightWidth);
+  const weightValueRowHeight = weight && !sameRow ? ptToMm(weight.sizePt) : 0;
+  // En « beside », le libellé « Poids net » passe au-dessus de la valeur.
+  const weightPrefixRowHeight =
+    weight && mode === "beside" ? lineHeightMm(footerPt) : 0;
+  const amountsHeight = weightPrefixRowHeight + weightValueRowHeight + priceRowHeight;
+
+  let footerHeight: number;
+  if (mode === "side") {
+    footerHeight = Math.max(barcodeHeight, infoBlock.heightMm + amountsHeight);
+  } else if (mode === "beside") {
+    footerHeight =
+      infoBlock.heightMm + style.gapSectionMm + Math.max(barcodeHeight, amountsHeight);
+  } else {
+    footerHeight =
+      infoBlock.heightMm + amountsHeight + style.gapSectionMm + barcodeHeight;
+  }
   const footerTop = storeTop - style.gapSectionMm - footerHeight;
+  const barcodeTop =
+    mode === "side"
+      ? footerTop
+      : mode === "beside"
+        ? footerTop + infoBlock.heightMm + style.gapSectionMm
+        : footerTop + footerHeight - barcodeHeight;
+  /** Bas de la ligne du prix. */
+  const priceRowBottom =
+    mode === "stacked" ? footerTop + infoBlock.heightMm + amountsHeight : footerTop + footerHeight;
+  /** Colonne des montants : bord gauche et largeur. */
+  const amountsX = mode === "beside" ? besideX : rightX;
+  const amountsWidth = mode === "beside" ? besideWidth : rightWidth;
 
   const barsX = innerLeft + pattern.quietLeftModules * moduleMm;
   const bars: LabelRect[] = pattern.bars.map((bar) => ({
     xMm: barsX + bar.xModules * moduleMm,
-    yMm: footerTop,
+    yMm: barcodeTop,
     widthMm: bar.widthModules * moduleMm,
     heightMm: style.barsHeightMm,
   }));
@@ -352,7 +434,7 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   texts.push({
     xMm: barsX + (pattern.totalModules * moduleMm - digitsWidth) / 2,
     baselineYMm:
-      footerTop + style.barsHeightMm + style.gapBarcodeDigitsMm + digitsSizeMm * 0.8,
+      barcodeTop + style.barsHeightMm + style.gapBarcodeDigitsMm + digitsSizeMm * 0.8,
     sizePt: style.digitsPt,
     text: digits,
     bold: false,
@@ -360,14 +442,44 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   });
 
   emitBlock(texts, infoBlock, rightX, footerTop);
-  emitBlock(
-    texts,
-    priceBlock,
-    rightX,
-    footerTop + footerHeight - priceBlock.heightMm,
-    "right",
-    rightWidth,
-  );
+  const priceTop = priceRowBottom - priceRowHeight;
+  const priceBaseline = priceTop + firstBaselineMm(pricePt);
+  if (weight) {
+    const valueTop = sameRow ? priceTop : priceTop - weightValueRowHeight;
+    const valueBaseline = sameRow ? priceBaseline : valueTop + firstBaselineMm(weight.sizePt);
+    const beside = mode === "beside";
+    texts.push(
+      {
+        // En « beside », libellé et valeur sont alignés à droite, sur deux lignes.
+        xMm: beside ? amountsX + amountsWidth - weightPrefixWidth : amountsX,
+        baselineYMm: beside
+          ? valueTop - weightPrefixRowHeight + firstBaselineMm(footerPt)
+          : valueBaseline,
+        sizePt: footerPt,
+        text: weight.prefix,
+        bold: false,
+        widthMm: weightPrefixWidth,
+      },
+      {
+        xMm: beside
+          ? amountsX + amountsWidth - weightValueWidth
+          : amountsX + weightPrefixWidth,
+        baselineYMm: valueBaseline,
+        sizePt: weight.sizePt,
+        text: weight.value,
+        bold: true,
+        widthMm: weightValueWidth,
+      },
+    );
+  }
+  texts.push({
+    xMm: amountsX + amountsWidth - priceWidth,
+    baselineYMm: priceBaseline,
+    sizePt: pricePt,
+    text: priceText,
+    bold: true,
+    widthMm: priceWidth,
+  });
 
   // --- Corps : le plus grand corps qui tient, jamais sous le minimum ------
   const bodyTop = innerTop + headerHeight + style.gapSectionMm;
@@ -411,6 +523,9 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   }
 
   return {
+    orientation,
+    widthMm: box.widthMm,
+    heightMm: box.heightMm,
     bars,
     texts,
     logo,

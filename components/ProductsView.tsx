@@ -10,6 +10,7 @@ import type { MeasureText } from "@/lib/label-render";
 import {
   emptyProduct,
   formatPrice,
+  formatWeight,
   hasBlockingIssue,
   newId,
   productIssues,
@@ -22,12 +23,22 @@ interface ProductsViewProps {
   spec: SheetSpec;
   measure: MeasureText | null;
   today: Date;
-  onSave: (product: Product) => void;
+  /** Écrit la fiche (création ou modification) dans la base, aussitôt. */
+  onChange: (product: Product) => void;
+  /** Fermeture de l'éditeur : mise à jour du référentiel, fiche vide retirée. */
+  onClose: (productId: string) => void;
   onRemove: (product: Product) => void;
+  editing: Editing;
+  onEditingChange: (editing: Editing) => void;
   onToggleActive: (product: Product, active: boolean) => void;
 }
 
-type Editing = { product: Product; isNew: boolean } | null;
+/**
+ * Fiche ouverte dans l'éditeur. Tenue par la page, pour qu'un changement
+ * d'onglet ne ferme pas la fiche en cours (elle est déjà enregistrée, mais le
+ * référentiel n'est alimenté qu'à la fermeture).
+ */
+export type Editing = { id: string; isNew: boolean } | null;
 
 /**
  * Espace dédié à la modification des fiches : la mercuriale d'impression ne
@@ -38,11 +49,13 @@ export function ProductsView({
   spec,
   measure,
   today,
-  onSave,
+  onChange,
+  onClose,
   onRemove,
   onToggleActive,
+  editing,
+  onEditingChange: setEditing,
 }: ProductsViewProps) {
-  const [editing, setEditing] = useState<Editing>(null);
   const [query, setQuery] = useState("");
 
   const products = useMemo(() => {
@@ -58,22 +71,33 @@ export function ProductsView({
       .sort((a, b) => a.name.localeCompare(b.name, "fr"));
   }, [library.products, query]);
 
-  if (editing) {
+  // La fiche éditée est lue dans la base : elle y est écrite à chaque frappe.
+  const edited = editing
+    ? library.products.find((product) => product.id === editing.id)
+    : undefined;
+
+  /** Crée la fiche dans la base dès l'ouverture de l'éditeur. */
+  function open(product: Product) {
+    onChange(product);
+    setEditing({ id: product.id, isNew: true });
+  }
+
+  if (editing && edited) {
     return (
       <ProductEditor
-        key={editing.product.id}
-        initial={editing.product}
+        key={edited.id}
+        product={edited}
         isNew={editing.isNew}
         references={library.references}
         settings={library.settings}
         spec={spec}
         measure={measure}
         today={today}
-        onSave={(product) => {
-          onSave(product);
+        onChange={onChange}
+        onClose={() => {
+          onClose(edited.id);
           setEditing(null);
         }}
-        onCancel={() => setEditing(null)}
       />
     );
   }
@@ -85,7 +109,7 @@ export function ProductsView({
         <button
           type="button"
           className={primaryButtonClass}
-          onClick={() => setEditing({ product: emptyProduct(), isNew: true })}
+          onClick={() => open(emptyProduct())}
         >
           + Nouvelle fiche
         </button>
@@ -127,7 +151,9 @@ export function ProductsView({
                   </p>
                   <p className="text-xs text-stone-500">
                     {product.priceCents > 0 ? formatPrice(product.priceCents) : "prix ?"}{" "}
-                    · {product.pieces} pièce(s) · {product.dateKind.toUpperCase()} J+
+                    · {product.pieces} pièce(s)
+                    {product.netWeightGrams ? ` · ${formatWeight(product.netWeightGrams)}` : ""}{" "}
+                    · {product.dateKind.toUpperCase()} J+
                     {product.shelfLifeDays}
                     {product.supplierCode ? ` · réf. ${product.supplierCode}` : ""}
                   </p>
@@ -142,7 +168,7 @@ export function ProductsView({
                   <button
                     type="button"
                     className={buttonClass}
-                    onClick={() => setEditing({ product, isNew: false })}
+                    onClick={() => setEditing({ id: product.id, isNew: false })}
                   >
                     Modifier
                   </button>
@@ -150,14 +176,13 @@ export function ProductsView({
                     type="button"
                     className={buttonClass}
                     onClick={() =>
-                      setEditing({
-                        product: {
-                          ...structuredClone(product),
-                          id: newId(),
-                          name: `${product.name} (copie)`,
-                          barcode: "",
-                        },
-                        isNew: true,
+                      open({
+                        ...structuredClone(product),
+                        id: newId(),
+                        name: `${product.name} (copie)`,
+                        barcode: "",
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
                       })
                     }
                   >

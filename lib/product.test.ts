@@ -6,11 +6,15 @@ import {
   emptyNutrition,
   emptyProduct,
   formatPrice,
+  formatWeight,
   hasBlockingIssue,
+  isBlankProduct,
   labelDates,
   parseNumber,
+  netQuantityFigureHeightMm,
   parsePrice,
   piecesLabel,
+  pricePerKgCents,
   productIssues,
 } from "./product";
 
@@ -83,6 +87,15 @@ describe("productIssues", () => {
   });
 });
 
+describe("isBlankProduct", () => {
+  it("reconnaît une fiche ouverte puis abandonnée sans saisie", () => {
+    expect(isBlankProduct(emptyProduct())).toBe(true);
+    expect(isBlankProduct({ ...emptyProduct(), name: "P" })).toBe(false);
+    expect(isBlankProduct({ ...emptyProduct(), netWeightGrams: 220 })).toBe(false);
+    expect(isBlankProduct(painAuChocolat())).toBe(false);
+  });
+});
+
 describe("dates", () => {
   it("calcule la date limite en jours calendaires, fin de mois comprise", () => {
     const product = { ...painAuChocolat(), dateKind: "dlc" as const, shelfLifeDays: 3 };
@@ -99,6 +112,37 @@ describe("dates", () => {
     const product = { ...painAuChocolat(), shelfLifeDays: 1 };
     expect(labelDates(product, new Date(2026, 9, 24, 23, 30)).limit).toBe("25/10/2026");
     expect(labelDates(product, new Date(2026, 9, 25, 0, 30)).limit).toBe("26/10/2026");
+  });
+});
+
+describe("poids net et prix au kilo", () => {
+  it("calcule le prix au kilo arrondi au centime", () => {
+    expect(pricePerKgCents(300, 220)).toBe(1364);
+    expect(pricePerKgCents(420, 300)).toBe(1400);
+    expect(pricePerKgCents(389, 220)).toBe(1768);
+    expect(pricePerKgCents(300, null)).toBeNull();
+  });
+
+  it("donne la hauteur légale des chiffres selon le poids", () => {
+    expect(netQuantityFigureHeightMm(50)).toBe(2);
+    expect(netQuantityFigureHeightMm(51)).toBe(3);
+    expect(netQuantityFigureHeightMm(200)).toBe(3);
+    expect(netQuantityFigureHeightMm(220)).toBe(4);
+    expect(netQuantityFigureHeightMm(1000)).toBe(4);
+    expect(netQuantityFigureHeightMm(1001)).toBe(6);
+  });
+
+  it("formate le poids en g puis en kg", () => {
+    expect(formatWeight(220)).toBe("220 g");
+    expect(formatWeight(1250)).toBe("1,25 kg");
+  });
+
+  it("avertit sans poids, bloque un poids aberrant", () => {
+    const none = productIssues({ ...painAuChocolat(), netWeightGrams: null });
+    expect(hasBlockingIssue(none)).toBe(false);
+    expect(none[0].message).toContain("Poids net non renseigné");
+    expect(hasBlockingIssue(productIssues({ ...painAuChocolat(), netWeightGrams: -1 }))).toBe(true);
+    expect(hasBlockingIssue(productIssues({ ...painAuChocolat(), netWeightGrams: 0 }))).toBe(true);
   });
 });
 

@@ -22,7 +22,8 @@ Contraintes de cadrage (décidées, ne pas les réintroduire en question) :
   canvas rastérisé (des barres floues cassent la lecture en caisse). Le logo
   du magasin est la seule image du PDF.
 - Code-barres = EAN-13 généré par la caisse (préfixe 2), collé tel quel ; le
-  prix n'y est pas encodé. **Vente à la pièce uniquement** (pas de poids).
+  prix n'y est pas encodé. Vente à la pièce à **prix fixe** : pas de pesée,
+  mais un **poids net nominal** saisi par fiche, d'où le prix au kg imprimé.
 - Pas d'impression à partir d'une étiquette donnée (planche entamée) ni
   d'historique des impressions : volontairement abandonnés.
 
@@ -69,11 +70,20 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   de l'étiquette). Aucune position ne doit être écrite en dur ailleurs. Une
   planche est décrite par son **pas** (cote du massicot), pas par sa
   gouttière, et la matrice est **centrée** : les marges sont calculées
-  (`sheetMarginsMm`), pas saisies. Les cotes de `AGIPA_118987` sont
-  **provisoires** (matrice standard du format, gabarit du fabricant pas encore
-  relevé) : voir `docs/agipa-118987-gabarit.md`. Quand le gabarit est
-  disponible, les relever et les figer par un test qui compare aux valeurs
-  brutes du gabarit — ne pas les déduire d'un autre support au même format.
+  (`sheetMarginsMm`), pas saisies. Les cotes de `AGIPA_118987` viennent du
+  gabarit Word du fabricant (`docs/agipa-118987-gabarit.doc`, relevé dans
+  `docs/agipa-118987-gabarit.md`) — la seule source autoritaire — et sont
+  figées par le test `colle aux bornes en twips du gabarit`. Les mettre à
+  jour demande de relire le gabarit, pas d'ajuster la valeur attendue ; ne
+  pas les déduire d'un autre support au même format.
+- **Orientation** (réglage `orientation`, interrupteur de l'onglet Impression) :
+  le support ne tourne jamais. `label-render` compose dans le cadre de lecture
+  (`labelBoxMm` : 99,1 × 67,7 en paysage, 67,7 × 99,1 en portrait) ; `pdf.ts`
+  tourne le contenu portrait de 90° horaire (`boxToSlotRect` pour les barres,
+  `rotate` pour textes et logo). L'aperçu SVG montre l'étiquette dans son sens
+  de lecture. En portrait, le pied s'empile : infos pleine largeur, puis poids
+  et prix à droite du code-barres (« beside »), ou tout en pleine largeur
+  (« stacked ») si les montants sont trop larges.
 - `labelSlot(spec, index, offset)` est le seul point qui place une étiquette ;
   le décalage imprimante X/Y (planche de calibration, réglages) passe par lui.
 - Ajouter un format = ajouter une `SheetSpec` à `SHEET_SPECS` (+ `purchase`).
@@ -81,8 +91,11 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   l'UI ne propose qu'un format, `app/page.tsx` fixe `SPEC`.
 - `lib/label-render.ts` — mise en page d'une étiquette : en-tête (logo +
   dénomination), corps (ingrédients par composant, traces, origine, valeurs
-  nutritionnelles, mentions), pied (code-barres à gauche ; dates, quantité,
-  réf. fournisseur, prix à droite), ligne du magasin. Le corps prend le plus
+  nutritionnelles, mentions), pied (code-barres à gauche ; dates, pièces,
+  prix au kg, réf. fournisseur, puis poids net + prix à droite), ligne du
+  magasin. Les chiffres du poids net respectent la hauteur légale
+  (`netQuantityFigureHeightMm` : 2/3/4/6 mm selon le poids,
+  `figureFontSizePt`). Le corps prend le plus
   grand corps qui tient, **jamais sous `minFontSizePt(minXHeightMm)`** (hauteur
   d'x légale INCO : 1,2 mm, ou 0,9 mm si emballage < 80 cm²). Si ça ne tient
   pas : `fits: false` + erreur bloquante. **Ne jamais tronquer** un texte
@@ -101,8 +114,41 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   écarte les entrées illisibles. Le fichier d'export a le même schéma.
   `applyImport` : fusion (fiches par id, référentiel par clé réf. fournisseur
   sinon nom) ou remplacement ; le décalage imprimante n'est jamais importé.
-  Le **référentiel** (`references`) = compositions réutilisables, alimenté à
-  chaque enregistrement de fiche, proposé en autocomplétion de la dénomination.
+  Le **référentiel** (`references`) = compositions réutilisables, proposé en
+  autocomplétion de la dénomination.
+- **Enregistrement immédiat** des fiches : pas de bouton « Enregistrer ».
+  `ProductEditor` lit la fiche dans la base et écrit chaque frappe
+  (`onChange` → `updateLibrary`) ; la fiche est créée dès « Nouvelle fiche ».
+  Le référentiel n'est alimenté qu'à la **fermeture** (`closeProduct` dans
+  `app/page.tsx`) — sa clé est le nom, l'alimenter à chaque frappe créerait
+  une fiche par lettre — et une fiche fermée vide (`isBlankProduct`) est
+  retirée. La version à l'ouverture sert à « Annuler mes modifications ».
+  La fiche ouverte (`editing`) est tenue par la page pour survivre à un
+  changement d'onglet.
+- `lib/backup.ts` — rappel de sauvegarde JSON (pas de serveur : rappel dans
+  l'app, à l'ouverture). `library.backup` est **propre au poste** : exclu de
+  l'export, conservé par `applyImport`. `updateLibrary` ouvre la période « non
+  sauvegardé » (`markChanged`) à chaque changement de contenu
+  (`contentChanged` : fiches, référentiel, réglages — pas le suivi lui-même) ;
+  l'export complet la referme (`markExported`). Rappel si des modifications
+  attendent depuis `intervalDays` (3 par défaut, réglable, 0 = jamais),
+  repoussable de 24 h.
+- **Dernière impression** (`library.lastPrint`, propre au poste comme
+  `backup` : ni exporté, ni écrasé par un import, hors `contentChanged`) :
+  écrite après chaque PDF réussi ; la mercuriale reprend ces quantités tant
+  que l'utilisateur n'en a touché aucune (`typedQuantities === null` dans
+  `app/page.tsx`).
+- `lib/folder-backup.ts` (pur, testé) + `lib/folder-backup-store.ts`
+  (navigateur) — sauvegarde automatique dans un dossier synchronisé
+  (OneDrive, Google Drive…) via l'API File System Access, **Chrome / Edge
+  seulement**, sans serveur. Le dossier (`FileSystemDirectoryHandle`) est
+  gardé dans IndexedDB ; après rechargement l'autorisation peut repasser à
+  « prompt » et ne se rend que sur clic (`reactivateFolderBackup`, bandeau
+  « en pause »). Écriture 1 s après la dernière modification non sauvegardée
+  (`etiquettes-bvp-sauvegarde.json` + copie du jour) ; une écriture réussie
+  vaut `markExported`, sauf si le contenu a changé pendant l'écriture (on
+  réécrit alors). En test navigateur, simuler le sélecteur avec l'OPFS
+  (`navigator.storage.getDirectory()`).
 - `lib/library-store.ts` — store externe lu par `useSyncExternalStore`. La
   persistance se fait **à l'écriture**, pas dans un effet (la règle
   `react-hooks/set-state-in-effect` interdit le `setState` dans un effet) ;

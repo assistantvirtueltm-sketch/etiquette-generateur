@@ -22,9 +22,11 @@ import {
   emptyComponent,
   emptyNutrition,
   formatNumber,
+  formatPrice,
   MAX_SHELF_LIFE_DAYS,
   NUTRIENTS,
   parsePrice,
+  pricePerKgCents,
   type NutritionTable,
   type Product,
   type ProductComponent,
@@ -34,15 +36,24 @@ import type { LibrarySettings } from "@/lib/storage";
 import { resolveCode, SYMBOLOGY_LABELS } from "@/lib/symbology";
 
 interface ProductEditorProps {
-  initial: Product;
+  /** Fiche telle qu'enregistrée : chaque modification est écrite aussitôt. */
+  product: Product;
   isNew: boolean;
   references: readonly ReferenceSheet[];
   settings: LibrarySettings;
   spec: SheetSpec;
   measure: MeasureText | null;
   today: Date;
-  onSave: (product: Product) => void;
-  onCancel: () => void;
+  onChange: (product: Product) => void;
+  onClose: () => void;
+}
+
+/** Deux versions d'une fiche sont-elles identiques (date de modif. exclue) ? */
+function sameContent(a: Product, b: Product): boolean {
+  return (
+    JSON.stringify({ ...a, updatedAt: "" }) ===
+    JSON.stringify({ ...b, updatedAt: "" })
+  );
 }
 
 function matchesQuery(reference: ReferenceSheet, query: string): boolean {
@@ -54,28 +65,42 @@ function matchesQuery(reference: ReferenceSheet, query: string): boolean {
   );
 }
 
+/**
+ * Éditeur de fiche à enregistrement immédiat : chaque frappe est écrite dans
+ * la base. La version à l'ouverture est gardée pour pouvoir tout annuler.
+ */
 export function ProductEditor({
-  initial,
+  product: draft,
   isNew,
   references,
   settings,
   spec,
   measure,
   today,
-  onSave,
-  onCancel,
+  onChange,
+  onClose,
 }: ProductEditorProps) {
-  const [draft, setDraft] = useState<Product>(initial);
+  // Version à l'ouverture de l'éditeur, pour « Annuler mes modifications ».
+  const [snapshot] = useState<Product>(draft);
   // Incrémenté quand des valeurs sont imposées de l'extérieur (reprise d'une
   // fiche du référentiel) : force les champs numériques à se réinitialiser.
   const [revision, setRevision] = useState(0);
   const [priceText, setPriceText] = useState(
-    initial.priceCents > 0 ? formatNumber(initial.priceCents / 100) : "",
+    draft.priceCents > 0 ? formatNumber(draft.priceCents / 100) : "",
   );
   const [nameFocused, setNameFocused] = useState(false);
 
   const update = (patch: Partial<Product>) =>
-    setDraft((current) => ({ ...current, ...patch }));
+    onChange({ ...draft, ...patch, updatedAt: new Date().toISOString() });
+
+  function revert() {
+    onChange(snapshot);
+    setPriceText(
+      snapshot.priceCents > 0 ? formatNumber(snapshot.priceCents / 100) : "",
+    );
+    setRevision((n) => n + 1);
+  }
+  const modified = !sameContent(draft, snapshot);
 
   const updateComponent = (id: string, patch: Partial<ProductComponent>) =>
     update({
@@ -102,6 +127,10 @@ export function ProductEditor({
   );
 
   const code = resolveCode(draft.barcode, draft.symbology);
+  const perKg =
+    draft.netWeightGrams !== null && draft.netWeightGrams > 0
+      ? pricePerKgCents(draft.priceCents, draft.netWeightGrams)
+      : null;
   const prepared = useMemo(
     () => (measure ? prepareLabel(draft, settings, today, spec, measure) : null),
     [draft, settings, today, spec, measure],
@@ -123,11 +152,28 @@ export function ProductEditor({
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_520px]">
       <form
         className="space-y-6"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSave({ ...draft, updatedAt: new Date().toISOString() });
-        }}
+        // Pas de bouton « Enregistrer » : Entrée ne doit rien soumettre.
+        onSubmit={(event) => event.preventDefault()}
       >
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          <span>
+            Enregistrement automatique : chaque modification est prise en
+            compte immédiatement.
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={buttonClass}
+              disabled={!modified}
+              onClick={revert}
+            >
+              Annuler mes modifications
+            </button>
+            <button type="button" className={primaryButtonClass} onClick={onClose}>
+              Fermer la fiche
+            </button>
+          </div>
+        </div>
         <Card title={isNew ? "Nouvelle fiche produit" : "Modifier la fiche"}>
           <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
             <div className="relative">
@@ -224,7 +270,7 @@ export function ProductEditor({
                 className={`${inputClass} font-mono`}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <Field label="Nombre de pièces">
                 <input
                   type="number"
@@ -235,6 +281,15 @@ export function ProductEditor({
                     update({ pieces: Math.trunc(Number(event.target.value)) })
                   }
                   className={inputClass}
+                />
+              </Field>
+              <Field label="Poids net (g)">
+                <DecimalInput
+                  key={`weight-${revision}`}
+                  value={draft.netWeightGrams}
+                  onChange={(value) =>
+                    update({ netWeightGrams: value === undefined ? -1 : value })
+                  }
                 />
               </Field>
               <Field label="Prix de vente (€)">
@@ -257,6 +312,11 @@ export function ProductEditor({
             </div>
           </div>
 
+          {perKg !== null ? (
+            <p className="mt-2 text-xs text-stone-600">
+              Prix au kg calculé : <strong>{formatPrice(perKg)}</strong>
+            </p>
+          ) : null}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <fieldset className="text-xs font-medium text-stone-600">
               <legend>Type de date</legend>
@@ -506,11 +566,16 @@ export function ProductEditor({
         </Card>
 
         <div className="flex gap-2">
-          <button type="submit" className={primaryButtonClass}>
-            Enregistrer la fiche
+          <button type="button" className={primaryButtonClass} onClick={onClose}>
+            Fermer la fiche
           </button>
-          <button type="button" className={buttonClass} onClick={onCancel}>
-            Annuler
+          <button
+            type="button"
+            className={buttonClass}
+            disabled={!modified}
+            onClick={revert}
+          >
+            Annuler mes modifications
           </button>
         </div>
       </form>

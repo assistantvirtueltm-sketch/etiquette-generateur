@@ -26,9 +26,9 @@ export function LabelPreview({
     <svg
       role="img"
       aria-label="Aperçu de l'étiquette"
-      width={spec.labelWidthMm * pxPerMm}
-      height={spec.labelHeightMm * pxPerMm}
-      viewBox={`0 0 ${spec.labelWidthMm} ${spec.labelHeightMm}`}
+      width={content.widthMm * pxPerMm}
+      height={content.heightMm * pxPerMm}
+      viewBox={`0 0 ${content.widthMm} ${content.heightMm}`}
       className={`max-w-full rounded-md border bg-white ${
         content.fits ? "border-stone-300" : "border-red-500"
       }`}

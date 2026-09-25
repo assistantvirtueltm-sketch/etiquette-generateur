@@ -3,11 +3,22 @@
 import { useMemo, useState } from "react";
 
 import { LabelPreview } from "@/components/LabelPreview";
+import { OrientationSwitch } from "@/components/OrientationSwitch";
 import { buttonClass, Card, IssueList, primaryButtonClass } from "@/components/ui";
-import { labelsPerSheet, type SheetSpec } from "@/lib/label-layout";
+import {
+  labelsPerSheet,
+  type Orientation,
+  type SheetSpec,
+} from "@/lib/label-layout";
 import { planSheets, prepareLabel } from "@/lib/label-job";
 import type { MeasureText } from "@/lib/label-render";
-import { formatDate, formatPrice, labelDates, type Product } from "@/lib/product";
+import {
+  formatDate,
+  formatPrice,
+  formatWeight,
+  labelDates,
+  type Product,
+} from "@/lib/product";
 import type { LibrarySettings } from "@/lib/storage";
 
 interface PrintViewProps {
@@ -17,9 +28,12 @@ interface PrintViewProps {
   measure: MeasureText | null;
   today: Date;
   quantities: Readonly<Record<string, number>>;
+  /** Date de l'impression dont les quantités sont reprises, sinon null. */
+  prefilledFrom: Date | null;
   onQuantityChange: (productId: string, count: number) => void;
   onReset: () => void;
   onPrint: () => void;
+  onOrientationChange: (orientation: Orientation) => void;
   busy: boolean;
 }
 
@@ -36,9 +50,11 @@ export function PrintView({
   measure,
   today,
   quantities,
+  prefilledFrom,
   onQuantityChange,
   onReset,
   onPrint,
+  onOrientationChange,
   busy,
 }: PrintViewProps) {
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -79,6 +95,12 @@ export function PrintView({
           </button>
         }
       >
+        {prefilledFrom && products.length > 0 ? (
+          <p className="mb-3 rounded-md bg-stone-100 px-3 py-2 text-sm text-stone-700">
+            Quantités reprises de la dernière impression, le{" "}
+            {formatDate(prefilledFrom)}. Les ajuster si besoin.
+          </p>
+        ) : null}
         {products.length === 0 ? (
           <p className="text-sm text-stone-500">
             Aucun produit actif. Créer ou activer des fiches dans l&apos;onglet
@@ -106,7 +128,8 @@ export function PrintView({
                       {product.name}
                     </span>
                     <span className="block text-xs text-stone-500">
-                      {formatPrice(product.priceCents)} ·{" "}
+                      {formatPrice(product.priceCents)}
+                      {product.netWeightGrams ? ` · ${formatWeight(product.netWeightGrams)}` : ""} ·{" "}
                       {product.dateKind.toUpperCase()} {dates.limit}
                     </span>
                     {label && !label.printable ? (
@@ -163,6 +186,15 @@ export function PrintView({
 
       <div className="space-y-6 lg:sticky lg:top-4 lg:self-start">
         <Card title="Impression">
+          <div className="mb-4 border-b border-stone-200 pb-4">
+            <p className="mb-2 text-xs font-medium text-stone-600">
+              Sens des étiquettes
+            </p>
+            <OrientationSwitch
+              value={settings.orientation}
+              onChange={onOrientationChange}
+            />
+          </div>
           <dl className="space-y-1 text-sm">
             <div className="flex justify-between">
               <dt className="text-stone-600">Étiquettes</dt>
