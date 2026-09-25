@@ -30,6 +30,9 @@ npm test -- -t "clé de contrôle" # un seul test par son nom
 npm run test:watch
 ```
 
+Vitest ne ramasse que `lib/**/*.test.ts` (`vitest.config.mts`) : les composants
+n'ont pas de tests, toute logique testable doit vivre dans `lib/`.
+
 Vérification dans un vrai navigateur (aucune dépendance de test E2E n'est
 installée) : `npm run build`, servir `out/` (`python3 -m http.server`), puis
 piloter Chromium avec `npm install --no-save playwright` et
@@ -58,6 +61,11 @@ saisie ──▶ symbology.ts       validation / détection du type / clé de co
   déduire d'un autre support au même format (la matrice Avery L7651 a le même
   38 × 21,2 mm mais un pas de 40,6 mm, ce qui fait déborder les colonnes
   extérieures de 5 mm).
+- Planche entamée et calibration : `labelSlot(spec, index, offset)` est le seul
+  point qui place une étiquette. L'index de départ (première étiquette libre)
+  et le décalage imprimante X/Y (réglé via la planche de calibration, persisté
+  dans les réglages de `lib/storage.ts`) passent par lui ; ne pas les appliquer
+  ailleurs.
 - Ajouter un format de planche = ajouter une `SheetSpec` à `SHEET_SPECS`
   (cotes relevées sur le gabarit du fabricant, plus un `purchase` — lien
   marchand https + référence vendue). `components/SheetSpecCard.tsx` en dérive
@@ -99,7 +107,9 @@ saisie ──▶ symbology.ts       validation / détection du type / clé de co
 - `lib/barcode-decode.test.ts` est le garde-fou central : il reconstruit la
   trame de modules depuis les rectangles millimétrés puis **décode** le résultat
   avec les tables EAN normatives. Un changement de mise en page qui casse la
-  lisibilité du code y échoue. L'étendre plutôt que le contourner.
+  lisibilité du code y échoue. L'étendre plutôt que le contourner. Il ne
+  relit aujourd'hui que l'EAN-13 : EAN-8, UPC-A et Code 128 (aussi acceptés
+  par `symbology.ts`) n'ont pas encore ce filet.
 - Les tests tournent en environnement node : pour du code qui touche au
   `localStorage`, stubber `window` (`vi.stubGlobal`) comme dans
   `lib/storage.test.ts`.
