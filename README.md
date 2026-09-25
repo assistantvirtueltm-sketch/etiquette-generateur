@@ -14,6 +14,10 @@ imprimer tel quel.
   réimporter sur le même poste ou sur un autre ; export du **référentiel seul**
   (compositions sans code caisse ni prix) pour partager des fiches entre
   magasins.
+- **Sauvegarde automatique dans un dossier** (Chrome / Edge) : choisir une
+  fois un dossier synchronisé avec le drive du magasin (OneDrive, Google
+  Drive, Dropbox…) ; chaque modification y est écrite
+  (`etiquettes-bvp-sauvegarde.json` + une copie par jour), sans serveur.
 - **Rappel de sauvegarde** : quand des modifications attendent depuis plus de
   3 jours (réglable) sans export complet, un bandeau le rappelle à
   l'ouverture de l'app, avec « Sauvegarder maintenant » et « Me le rappeler
@@ -62,8 +66,8 @@ responsable qualité.
    leur composition peut être reprise. Coller le code-barres créé en caisse.
    Tout est enregistré à chaque frappe (pas de bouton « Enregistrer ») ;
    « Annuler mes modifications » revient à la fiche telle qu'à l'ouverture.
-3. **Impression du jour** : saisir le nombre d'étiquettes de chaque produit
-   actif. L'app indique combien de feuilles mettre dans l'imprimante, puis
+3. **Impression du jour** : les quantités de la dernière impression sont
+   reprises ; les ajuster pour chaque produit actif. L'app indique combien de feuilles mettre dans l'imprimante, puis
    télécharge le PDF.
 4. Imprimer **à 100 %** : dans la boîte de dialogue d'impression, choisir
    « Taille réelle » / « 100 % » et **désactiver** « Ajuster à la page ».

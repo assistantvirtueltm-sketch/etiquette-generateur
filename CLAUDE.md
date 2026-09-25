@@ -133,6 +133,22 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   l'export complet la referme (`markExported`). Rappel si des modifications
   attendent depuis `intervalDays` (3 par défaut, réglable, 0 = jamais),
   repoussable de 24 h.
+- **Dernière impression** (`library.lastPrint`, propre au poste comme
+  `backup` : ni exporté, ni écrasé par un import, hors `contentChanged`) :
+  écrite après chaque PDF réussi ; la mercuriale reprend ces quantités tant
+  que l'utilisateur n'en a touché aucune (`typedQuantities === null` dans
+  `app/page.tsx`).
+- `lib/folder-backup.ts` (pur, testé) + `lib/folder-backup-store.ts`
+  (navigateur) — sauvegarde automatique dans un dossier synchronisé
+  (OneDrive, Google Drive…) via l'API File System Access, **Chrome / Edge
+  seulement**, sans serveur. Le dossier (`FileSystemDirectoryHandle`) est
+  gardé dans IndexedDB ; après rechargement l'autorisation peut repasser à
+  « prompt » et ne se rend que sur clic (`reactivateFolderBackup`, bandeau
+  « en pause »). Écriture 1 s après la dernière modification non sauvegardée
+  (`etiquettes-bvp-sauvegarde.json` + copie du jour) ; une écriture réussie
+  vaut `markExported`, sauf si le contenu a changé pendant l'écriture (on
+  réécrit alors). En test navigateur, simuler le sélecteur avec l'OPFS
+  (`navigator.storage.getDirectory()`).
 - `lib/library-store.ts` — store externe lu par `useSyncExternalStore`. La
   persistance se fait **à l'écriture**, pas dans un effet (la règle
   `react-hooks/set-state-in-effect` interdit le `setState` dans un effet) ;

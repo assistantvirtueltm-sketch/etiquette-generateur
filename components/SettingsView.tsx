@@ -9,6 +9,7 @@ import {
   Field,
   inputClass,
 } from "@/components/ui";
+import { FolderBackupCard } from "@/components/FolderBackupCard";
 import { BACKUP_INTERVALS } from "@/lib/backup";
 import type { SheetSpec } from "@/lib/label-layout";
 import { formatDate } from "@/lib/product";
@@ -231,6 +232,8 @@ export function SettingsView({
       </div>
 
       <div className="space-y-6">
+        <FolderBackupCard />
+
         <Card title="Sauvegarde">
           <p className="mb-3 text-xs text-stone-500">
             Les fiches vivent dans ce navigateur uniquement. Exporter
