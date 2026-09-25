@@ -120,6 +120,44 @@ export function sheetGapsMm(spec: SheetSpec): {
   };
 }
 
+/**
+ * Sens de lecture de l'étiquette. Le support ne tourne pas : en portrait, le
+ * contenu est composé dans un cadre hauteur × largeur puis tourné de 90° dans
+ * le sens horaire à l'impression (le haut du texte vers le bord droit de
+ * l'étiquette).
+ */
+export type Orientation = "landscape" | "portrait";
+
+/** Cadre de mise en page d'une étiquette, dans son sens de lecture. */
+export function labelBoxMm(
+  spec: SheetSpec,
+  orientation: Orientation,
+): { widthMm: number; heightMm: number } {
+  // Le « paysage » est le sens de la planche : l'étiquette telle que posée.
+  return orientation === "landscape"
+    ? { widthMm: spec.labelWidthMm, heightMm: spec.labelHeightMm }
+    : { widthMm: spec.labelHeightMm, heightMm: spec.labelWidthMm };
+}
+
+/**
+ * Passe d'un rectangle du cadre de lecture au repère de l'étiquette posée sur
+ * la planche (origine en haut à gauche). Identité en paysage ; en portrait,
+ * rotation de 90° horaire : (u, v) → (largeur − v, u).
+ */
+export function boxToSlotRect(
+  spec: SheetSpec,
+  orientation: Orientation,
+  rect: RectMm,
+): RectMm {
+  if (orientation === "landscape") return rect;
+  return {
+    xMm: spec.labelWidthMm - (rect.yMm + rect.heightMm),
+    yMm: rect.xMm,
+    widthMm: rect.heightMm,
+    heightMm: rect.widthMm,
+  };
+}
+
 /** Décalage global d'impression, pour compenser la dérive d'une imprimante. */
 export interface PrintOffsetMm {
   xMm: number;

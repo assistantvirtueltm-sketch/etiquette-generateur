@@ -135,6 +135,37 @@ describe("buildPrintPdf", () => {
   });
 });
 
+describe("buildPrintPdf en portrait", () => {
+  it("tourne le contenu d'un quart de tour, barres comprises, dans l'emplacement", async () => {
+    const pdf = await buildPrintPdf(
+      [{ product: painAuChocolat(), count: 1 }],
+      { ...SAMPLE_SETTINGS, orientation: "portrait" },
+      DAY,
+    );
+    const reloaded = await PDFDocument.load(pdf.bytes);
+    expect(reloaded.getPageCount()).toBe(1);
+    const content = contentStreams(pdf.bytes);
+    // Textes tournés de -90° : matrice de texte « 0 -1 1 0 ».
+    expect(content).toMatch(/[\d.e-]+ -1 1 [\d.e-]+ [\d.]+ [\d.]+ Tm/);
+    // Barres : rectangles horizontaux (larges et fins), dans l'emplacement 1.
+    const slot = labelSlot(spec, 0);
+    const rects = [
+      ...content.matchAll(
+        /1 0 0 1 ([\d.]+) ([\d.]+) cm\s+(?:1 0 0 1 0 0 cm\s+)*0 0 m\s+0 ([\d.]+) l\s+([\d.]+) \3 l/g,
+      ),
+    ];
+    expect(rects.length).toBe(30);
+    for (const match of rects) {
+      const xMm = Number(match[1]) / mmToPt(1);
+      const widthMm = Number(match[4]) / mmToPt(1);
+      const heightMm = Number(match[3]) / mmToPt(1);
+      expect(widthMm).toBeGreaterThan(heightMm);
+      expect(xMm).toBeGreaterThanOrEqual(slot.xMm);
+      expect(xMm + widthMm).toBeLessThanOrEqual(slot.xMm + slot.widthMm + 1e-6);
+    }
+  });
+});
+
 describe("buildCalibrationPdf", () => {
   it("trace les 8 emplacements numérotés", async () => {
     const pdf = await buildCalibrationPdf(spec, { xMm: 0.5, yMm: -0.5 });

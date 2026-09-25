@@ -267,6 +267,57 @@ describe("étiquette BVP", () => {
   });
 });
 
+describe("étiquette en portrait", () => {
+  const portrait = { ...SAMPLE_SETTINGS, orientation: "portrait" as const };
+
+  it("compose dans un cadre 67,7 × 99,1 mm et y garde tout le contenu", () => {
+    for (const product of [painAuChocolat(), assortiment()]) {
+      const { prepared, content } = render(product, portrait);
+      expect(prepared.printable).toBe(true);
+      expect(content.orientation).toBe("portrait");
+      expect(content.widthMm).toBe(spec.labelHeightMm);
+      expect(content.heightMm).toBe(spec.labelWidthMm);
+      for (const text of content.texts) {
+        expect(text.xMm).toBeGreaterThanOrEqual(LABEL_STYLE.paddingXMm - 1e-6);
+        expect(text.xMm + text.widthMm).toBeLessThanOrEqual(
+          content.widthMm - LABEL_STYLE.paddingXMm + 1e-6,
+        );
+        expect(text.baselineYMm).toBeLessThanOrEqual(
+          content.heightMm - LABEL_STYLE.paddingYMm,
+        );
+      }
+      for (const bar of content.bars) {
+        expect(bar.xMm + bar.widthMm).toBeLessThanOrEqual(content.widthMm);
+      }
+    }
+  });
+
+  it("garde le code-barres à la X-dimension nominale", () => {
+    const { content } = render(painAuChocolat(), portrait);
+    expect(content.moduleMm).toBeCloseTo(LABEL_STYLE.nominalModuleMm, 10);
+  });
+
+  it("pose poids et prix à droite du code-barres, sans chevauchement", () => {
+    const { content } = render(painAuChocolat(), portrait);
+    const barsRight = Math.max(...content.bars.map((b) => b.xMm + b.widthMm));
+    const barsTop = content.bars[0].yMm;
+    for (const label of ["220 g", "3,00 €"]) {
+      const text = content.texts.find((t) => t.text === label)!;
+      expect(text.xMm).toBeGreaterThan(barsRight);
+      expect(text.baselineYMm).toBeGreaterThan(barsTop);
+    }
+  });
+
+  it("empile tout en pleine largeur quand les montants sont trop larges", () => {
+    const { content } = render(
+      { ...painAuChocolat(), netWeightGrams: 1250, priceCents: 12345 },
+      portrait,
+    );
+    const price = content.texts.find((t) => t.text === "123,45 €")!;
+    expect(price.baselineYMm).toBeLessThan(content.bars[0].yMm);
+  });
+});
+
 describe("bodyParagraphs", () => {
   it("préfixe chaque composant d'un assortiment par son nom", () => {
     const paragraphs = bodyParagraphs(assortiment());

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { barPattern } from "./barcode-modules";
 import { painAuChocolat, SAMPLE_SETTINGS } from "./fixtures";
-import { AGIPA_118987 } from "./label-layout";
+import { AGIPA_118987, boxToSlotRect } from "./label-layout";
 import { prepareLabel } from "./label-job";
 import { createMeasurer } from "./pdf";
 import { resolveCode, type Symbology } from "./symbology";
@@ -47,6 +47,40 @@ function modulesFromLabel(input: string, symbology: Symbology): string {
     const start = Math.round((bar.xMm - originMm) / content.moduleMm);
     const width = Math.round(bar.widthMm / content.moduleMm);
     expect(width).toBeGreaterThan(0);
+    for (let i = start; i < start + width; i++) bits[i] = "1";
+  }
+  return bits.join("");
+}
+
+/**
+ * Même reconstruction en portrait, mais sur les rectangles **tournés** tels
+ * que posés sur la planche (`boxToSlotRect`) : les barres deviennent des
+ * traits horizontaux, lus de haut en bas.
+ */
+function modulesFromPortraitSlot(input: string): string {
+  const resolved = resolveCode(input, "ean13");
+  if (!resolved.ok) throw new Error(resolved.error);
+  const pattern = barPattern(resolved.code.symbology, resolved.code.value);
+  const { content } = prepareLabel(
+    { ...painAuChocolat(), barcode: input },
+    { ...SAMPLE_SETTINGS, orientation: "portrait" },
+    new Date(2026, 8, 25),
+    AGIPA_118987,
+    measure,
+  );
+  if (!content) throw new Error("mise en page impossible");
+  const rects = content.bars.map((bar) =>
+    boxToSlotRect(AGIPA_118987, "portrait", bar),
+  );
+  for (const rect of rects) {
+    expect(rect.xMm).toBeGreaterThanOrEqual(0);
+    expect(rect.xMm + rect.widthMm).toBeLessThanOrEqual(AGIPA_118987.labelWidthMm);
+  }
+  const originMm = rects[0].yMm;
+  const bits = Array.from({ length: pattern.totalModules }, () => "0");
+  for (const rect of rects) {
+    const start = Math.round((rect.yMm - originMm) / content.moduleMm);
+    const width = Math.round(rect.heightMm / content.moduleMm);
     for (let i = start; i < start + width; i++) bits[i] = "1";
   }
   return bits.join("");
@@ -108,6 +142,12 @@ describe("relecture des barres imprimées", () => {
       expect(decodeEan13(modulesFromLabel(value, "ean13"))).toBe(value);
     },
   );
+
+  it("relit le code caisse sur une étiquette tournée en portrait", () => {
+    expect(decodeEan13(modulesFromPortraitSlot("2000000271040"))).toBe(
+      "2000000271040",
+    );
+  });
 
   it("relit un EAN-13", () => {
     expect(decodeEan13(modulesFromLabel("5901234123457", "ean13"))).toBe(

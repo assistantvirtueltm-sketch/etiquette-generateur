@@ -273,6 +273,7 @@ export default function Page() {
           }
           onReset={() => setQuantities({})}
           onPrint={() => void print()}
+          onOrientationChange={(orientation) => updateSettings({ orientation })}
           busy={busy}
         />
       ) : tab === "products" ? (

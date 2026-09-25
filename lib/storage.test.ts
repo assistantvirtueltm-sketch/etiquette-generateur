@@ -111,6 +111,7 @@ describe("migrate", () => {
       settings: {
         offsetXMm: "nope",
         minXHeightMm: 0.5,
+        orientation: "de travers",
         logo: { dataUrl: "javascript:alert(1)", widthPx: 10, heightPx: 10 },
       },
     });
@@ -125,6 +126,7 @@ describe("migrate", () => {
     expect(product.nutrition[0].salt).toBe(0.9);
     expect(library.settings.offsetXMm).toBe(DEFAULT_SETTINGS.offsetXMm);
     expect(library.settings.minXHeightMm).toBe(1.2);
+    expect(library.settings.orientation).toBe("landscape");
     expect(library.settings.logo).toBeNull();
   });
 

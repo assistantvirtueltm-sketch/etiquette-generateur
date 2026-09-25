@@ -30,6 +30,10 @@ net (chiffres à la hauteur légale : 4 mm entre 200 g et 1 kg), prix au kilo
 calculé depuis le poids net et le prix, prix de vente ;
 nom et adresse du magasin.
 
+Un interrupteur **Paysage / Portrait** (onglet Impression, mémorisé) choisit
+le sens de lecture : en portrait, le contenu de chaque étiquette est tourné
+d'un quart de tour sur la même planche.
+
 **Garde-fous :**
 
 - Rien n'est jamais tronqué ni imprimé sous la hauteur d'x minimale légale

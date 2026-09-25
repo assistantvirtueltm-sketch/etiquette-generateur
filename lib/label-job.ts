@@ -48,6 +48,7 @@ export function prepareLabel(
         ? settings.logo.widthPx / settings.logo.heightPx
         : null,
       minXHeightMm: settings.minXHeightMm,
+      orientation: settings.orientation,
       measure,
     });
     issues.push(

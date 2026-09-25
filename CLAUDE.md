@@ -75,6 +75,14 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   relevé) : voir `docs/agipa-118987-gabarit.md`. Quand le gabarit est
   disponible, les relever et les figer par un test qui compare aux valeurs
   brutes du gabarit — ne pas les déduire d'un autre support au même format.
+- **Orientation** (réglage `orientation`, interrupteur de l'onglet Impression) :
+  le support ne tourne jamais. `label-render` compose dans le cadre de lecture
+  (`labelBoxMm` : 99,1 × 67,7 en paysage, 67,7 × 99,1 en portrait) ; `pdf.ts`
+  tourne le contenu portrait de 90° horaire (`boxToSlotRect` pour les barres,
+  `rotate` pour textes et logo). L'aperçu SVG montre l'étiquette dans son sens
+  de lecture. En portrait, le pied s'empile : infos pleine largeur, puis poids
+  et prix à droite du code-barres (« beside »), ou tout en pleine largeur
+  (« stacked ») si les montants sont trop larges.
 - `labelSlot(spec, index, offset)` est le seul point qui place une étiquette ;
   le décalage imprimante X/Y (planche de calibration, réglages) passe par lui.
 - Ajouter un format = ajouter une `SheetSpec` à `SHEET_SPECS` (+ `purchase`).

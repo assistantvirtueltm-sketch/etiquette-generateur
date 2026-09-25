@@ -19,6 +19,7 @@ import {
   type ProductComponent,
   type ReferenceSheet,
 } from "./product";
+import type { Orientation } from "./label-layout";
 import type { SymbologyChoice } from "./symbology";
 
 export const STORAGE_KEY = "etiquettes-bvp:library:v2";
@@ -55,6 +56,8 @@ export interface LibrarySettings {
   store: StoreInfo;
   logo: StoreLogo | null;
   minXHeightMm: MinXHeightMm;
+  /** Sens de lecture des étiquettes imprimées. */
+  orientation: Orientation;
 }
 
 export interface Library {
@@ -71,6 +74,7 @@ export const DEFAULT_SETTINGS: LibrarySettings = {
   store: { name: "", address: "" },
   logo: null,
   minXHeightMm: 1.2,
+  orientation: "landscape",
 };
 
 export function emptyLibrary(): Library {
@@ -238,6 +242,7 @@ function migrateSettings(raw: unknown): LibrarySettings {
     store: { name: asString(store.name), address: asString(store.address) },
     logo: migrateLogo(record.logo),
     minXHeightMm: record.minXHeightMm === 0.9 ? 0.9 : 1.2,
+    orientation: record.orientation === "portrait" ? "portrait" : "landscape",
   };
 }
 
