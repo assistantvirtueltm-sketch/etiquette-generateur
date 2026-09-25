@@ -25,7 +25,9 @@ paragraphe par composant d'assortiment), allergènes **en gras**, traces
 (« Produit décongelé, ne pas recongeler », conservation, « Cuit et emballé le
 même jour »). Pied : code-barres, date d'emballage, DLC (« À consommer
 jusqu'au ») ou DDM (« À consommer de préférence avant le ») calculée à partir
-de la durée de vie du produit, nombre de pièces, référence fournisseur, prix ;
+de la durée de vie du produit, nombre de pièces, référence fournisseur, poids
+net (chiffres à la hauteur légale : 4 mm entre 200 g et 1 kg), prix au kilo
+calculé depuis le poids net et le prix, prix de vente ;
 nom et adresse du magasin.
 
 **Garde-fous :**

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { barPattern } from "./barcode-modules";
 import { assortiment, painAuChocolat, SAMPLE_SETTINGS } from "./fixtures";
-import { AGIPA_118987, LABEL_STYLE, minFontSizePt } from "./label-layout";
+import {
+  AGIPA_118987,
+  HELVETICA_FIGURE_HEIGHT_EM,
+  LABEL_STYLE,
+  minFontSizePt,
+  ptToMm,
+} from "./label-layout";
 import { prepareLabel } from "./label-job";
 import { bodyParagraphs, buildLabelContent } from "./label-render";
 import { labelDates, type Product } from "./product";
@@ -133,6 +139,48 @@ describe("étiquette BVP", () => {
     expect(text).toContain("4 pièces");
     expect(text).toContain("3,00 €");
     expect(text).toContain("2 000000 271040");
+  });
+
+  it("imprime le poids net et le prix au kilo qui en découle", () => {
+    const text = allText(painAuChocolat());
+    expect(text).toContain("Poids net");
+    expect(text).toContain("220 g");
+    // 3,00 € pour 220 g → 13,636… → 13,64 €/kg, comme la balance.
+    expect(text).toContain("Prix au kg : 13,64 €");
+  });
+
+  it("imprime les chiffres du poids net à la hauteur légale", () => {
+    const { content } = render(painAuChocolat());
+    const weight = content.texts.find((t) => t.text === "220 g")!;
+    // 200 g < 220 g ≤ 1 kg → chiffres d'au moins 4 mm.
+    expect(ptToMm(weight.sizePt) * HELVETICA_FIGURE_HEIGHT_EM).toBeGreaterThanOrEqual(4 - 1e-9);
+    const light = render({ ...painAuChocolat(), netWeightGrams: 150 }).content;
+    const small = light.texts.find((t) => t.text === "150 g")!;
+    expect(ptToMm(small.sizePt) * HELVETICA_FIGURE_HEIGHT_EM).toBeGreaterThanOrEqual(3 - 1e-9);
+    expect(small.sizePt).toBeLessThan(weight.sizePt);
+  });
+
+  it("pose poids et prix sur la même ligne, ou l'un sous l'autre s'ils ne tiennent pas", () => {
+    const sameLine = render(painAuChocolat()).content.texts;
+    const weight = sameLine.find((t) => t.text === "220 g")!;
+    const price = sameLine.find((t) => t.text === "3,00 €")!;
+    expect(weight.baselineYMm).toBeCloseTo(price.baselineYMm, 6);
+    expect(weight.xMm + weight.widthMm).toBeLessThan(price.xMm);
+
+    const heavy = render({ ...painAuChocolat(), netWeightGrams: 1250, priceCents: 12345 })
+      .content.texts;
+    const heavyWeight = heavy.find((t) => t.text === "1,25 kg")!;
+    const heavyPrice = heavy.find((t) => t.text === "123,45 €")!;
+    expect(heavyWeight.baselineYMm).toBeLessThan(heavyPrice.baselineYMm);
+    for (const t of heavy) {
+      expect(t.xMm + t.widthMm).toBeLessThanOrEqual(spec.labelWidthMm - LABEL_STYLE.paddingXMm + 1e-6);
+    }
+  });
+
+  it("n'imprime ni poids ni prix au kilo sans poids renseigné", () => {
+    const text = allText({ ...painAuChocolat(), netWeightGrams: null });
+    expect(text).not.toContain("Poids net");
+    expect(text).not.toContain("Prix au kg");
   });
 
   it("utilise la formule de la DLC", () => {

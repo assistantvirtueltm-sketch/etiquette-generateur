@@ -10,6 +10,7 @@ import type { MeasureText } from "@/lib/label-render";
 import {
   emptyProduct,
   formatPrice,
+  formatWeight,
   hasBlockingIssue,
   newId,
   productIssues,
@@ -127,7 +128,9 @@ export function ProductsView({
                   </p>
                   <p className="text-xs text-stone-500">
                     {product.priceCents > 0 ? formatPrice(product.priceCents) : "prix ?"}{" "}
-                    · {product.pieces} pièce(s) · {product.dateKind.toUpperCase()} J+
+                    · {product.pieces} pièce(s)
+                    {product.netWeightGrams ? ` · ${formatWeight(product.netWeightGrams)}` : ""}{" "}
+                    · {product.dateKind.toUpperCase()} J+
                     {product.shelfLifeDays}
                     {product.supplierCode ? ` · réf. ${product.supplierCode}` : ""}
                   </p>

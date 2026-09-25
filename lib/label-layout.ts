@@ -204,6 +204,17 @@ export function ptToMm(valuePt: number): number {
  */
 export const HELVETICA_X_HEIGHT_EM = 0.523;
 
+/**
+ * Hauteur des chiffres de l'Helvetica en fraction du corps (≈ 0,70, valeur
+ * prise un peu basse pour rester du bon côté du minimum légal).
+ */
+export const HELVETICA_FIGURE_HEIGHT_EM = 0.7;
+
+/** Corps (pt) donnant des chiffres d'au moins `heightMm` de haut. */
+export function figureFontSizePt(heightMm: number): number {
+  return mmToPt(heightMm) / HELVETICA_FIGURE_HEIGHT_EM;
+}
+
 /** Corps minimal (pt) pour respecter une hauteur d'x donnée (mm). */
 export function minFontSizePt(xHeightMm: number): number {
   return mmToPt(xHeightMm) / HELVETICA_X_HEIGHT_EM;

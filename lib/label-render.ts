@@ -13,6 +13,7 @@
  */
 import type { BarPattern } from "./barcode-modules";
 import {
+  figureFontSizePt,
   LABEL_STYLE,
   minFontSizePt,
   ptToMm,
@@ -20,8 +21,11 @@ import {
 } from "./label-layout";
 import {
   formatNumber,
-  piecesLabel,
   formatPrice,
+  formatWeight,
+  netQuantityFigureHeightMm,
+  piecesLabel,
+  pricePerKgCents,
   type LabelDates,
   type NutritionTable,
   type Product,
@@ -305,38 +309,62 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   const footerPt = Math.max(minPt, 7);
   const rightX = innerLeft + barcodeWidth + style.gapFooterColumnsMm;
   const rightWidth = innerLeft + innerWidth - rightX;
+  const perKg = pricePerKgCents(product.priceCents, product.netWeightGrams);
   const footerParagraphs: Run[][] = [
     [
       { text: "Emballé le ", bold: false },
       { text: dates.packedOn, bold: true },
+      ...(product.supplierCode.trim()
+        ? [{ text: ` – Réf. ${product.supplierCode.trim()}`, bold: false }]
+        : []),
     ],
     [
       { text: `${dates.limitWording} `, bold: false },
       { text: dates.limit, bold: true },
     ],
     [
-      { text: `Quantité : ${piecesLabel(product.pieces)}`, bold: false },
-      ...(product.supplierCode.trim()
-        ? [{ text: ` – Réf. ${product.supplierCode.trim()}`, bold: false }]
-        : []),
+      { text: piecesLabel(product.pieces), bold: false },
+      ...(perKg === null
+        ? []
+        : [{ text: ` – Prix au kg : ${formatPrice(perKg)}`, bold: false }]),
     ],
   ];
   const footerLines = footerParagraphs.flatMap((runs) =>
     wrapRuns(sanitizeRuns(runs, sanitized), rightWidth, footerPt, measure),
   );
   const infoBlock = block(footerLines, footerPt);
-  const priceBlock = block(
-    wrapRuns(
-      [{ text: formatPrice(product.priceCents), bold: true }],
-      rightWidth,
-      style.pricePt,
-      measure,
-    ),
-    style.pricePt,
-  );
+
+  // Dernière ligne : poids net (chiffres à la hauteur légale) et prix. Sur
+  // une seule ligne quand la place le permet, sinon l'un sous l'autre.
+  const priceText = formatPrice(product.priceCents);
+  const weight =
+    product.netWeightGrams === null
+      ? null
+      : {
+          prefix: "Poids net ",
+          value: formatWeight(product.netWeightGrams),
+          sizePt: Math.max(
+            footerPt,
+            figureFontSizePt(netQuantityFigureHeightMm(product.netWeightGrams)),
+          ),
+        };
+  const pricePt = Math.max(style.pricePt, weight?.sizePt ?? 0);
+  const priceWidth = ptToMm(measure(priceText, pricePt, true));
+  const weightPrefixWidth = weight
+    ? ptToMm(measure(weight.prefix, footerPt, false))
+    : 0;
+  const weightValueWidth = weight
+    ? ptToMm(measure(weight.value, weight.sizePt, true))
+    : 0;
+  const weightWidth = weightPrefixWidth + weightValueWidth;
+  const sameRow =
+    !weight || weightWidth + style.gapFooterColumnsMm + priceWidth <= rightWidth;
+  // Lignes de chiffres seuls : pas besoin d'interligne au-delà du corps.
+  const weightRowHeight = weight && !sameRow ? ptToMm(weight.sizePt) : 0;
+  const priceRowHeight = ptToMm(pricePt);
   const footerHeight = Math.max(
     barcodeHeight,
-    infoBlock.heightMm + priceBlock.heightMm,
+    infoBlock.heightMm + weightRowHeight + priceRowHeight,
   );
   const footerTop = storeTop - style.gapSectionMm - footerHeight;
 
@@ -360,14 +388,40 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   });
 
   emitBlock(texts, infoBlock, rightX, footerTop);
-  emitBlock(
-    texts,
-    priceBlock,
-    rightX,
-    footerTop + footerHeight - priceBlock.heightMm,
-    "right",
-    rightWidth,
-  );
+  const priceBaseline =
+    footerTop + footerHeight - priceRowHeight + firstBaselineMm(pricePt);
+  if (weight) {
+    const weightBaseline = sameRow
+      ? priceBaseline
+      : footerTop + footerHeight - priceRowHeight - weightRowHeight +
+        firstBaselineMm(weight.sizePt);
+    texts.push(
+      {
+        xMm: rightX,
+        baselineYMm: weightBaseline,
+        sizePt: footerPt,
+        text: weight.prefix,
+        bold: false,
+        widthMm: weightPrefixWidth,
+      },
+      {
+        xMm: rightX + weightPrefixWidth,
+        baselineYMm: weightBaseline,
+        sizePt: weight.sizePt,
+        text: weight.value,
+        bold: true,
+        widthMm: weightValueWidth,
+      },
+    );
+  }
+  texts.push({
+    xMm: rightX + rightWidth - priceWidth,
+    baselineYMm: priceBaseline,
+    sizePt: pricePt,
+    text: priceText,
+    bold: true,
+    widthMm: priceWidth,
+  });
 
   // --- Corps : le plus grand corps qui tient, jamais sous le minimum ------
   const bodyTop = innerTop + headerHeight + style.gapSectionMm;

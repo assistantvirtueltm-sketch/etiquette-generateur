@@ -22,7 +22,8 @@ Contraintes de cadrage (décidées, ne pas les réintroduire en question) :
   canvas rastérisé (des barres floues cassent la lecture en caisse). Le logo
   du magasin est la seule image du PDF.
 - Code-barres = EAN-13 généré par la caisse (préfixe 2), collé tel quel ; le
-  prix n'y est pas encodé. **Vente à la pièce uniquement** (pas de poids).
+  prix n'y est pas encodé. Vente à la pièce à **prix fixe** : pas de pesée,
+  mais un **poids net nominal** saisi par fiche, d'où le prix au kg imprimé.
 - Pas d'impression à partir d'une étiquette donnée (planche entamée) ni
   d'historique des impressions : volontairement abandonnés.
 
@@ -81,8 +82,11 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   l'UI ne propose qu'un format, `app/page.tsx` fixe `SPEC`.
 - `lib/label-render.ts` — mise en page d'une étiquette : en-tête (logo +
   dénomination), corps (ingrédients par composant, traces, origine, valeurs
-  nutritionnelles, mentions), pied (code-barres à gauche ; dates, quantité,
-  réf. fournisseur, prix à droite), ligne du magasin. Le corps prend le plus
+  nutritionnelles, mentions), pied (code-barres à gauche ; dates, pièces,
+  prix au kg, réf. fournisseur, puis poids net + prix à droite), ligne du
+  magasin. Les chiffres du poids net respectent la hauteur légale
+  (`netQuantityFigureHeightMm` : 2/3/4/6 mm selon le poids,
+  `figureFontSizePt`). Le corps prend le plus
   grand corps qui tient, **jamais sous `minFontSizePt(minXHeightMm)`** (hauteur
   d'x légale INCO : 1,2 mm, ou 0,9 mm si emballage < 80 cm²). Si ça ne tient
   pas : `fits: false` + erreur bloquante. **Ne jamais tronquer** un texte

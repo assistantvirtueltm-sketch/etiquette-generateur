@@ -22,9 +22,11 @@ import {
   emptyComponent,
   emptyNutrition,
   formatNumber,
+  formatPrice,
   MAX_SHELF_LIFE_DAYS,
   NUTRIENTS,
   parsePrice,
+  pricePerKgCents,
   type NutritionTable,
   type Product,
   type ProductComponent,
@@ -102,6 +104,10 @@ export function ProductEditor({
   );
 
   const code = resolveCode(draft.barcode, draft.symbology);
+  const perKg =
+    draft.netWeightGrams !== null && draft.netWeightGrams > 0
+      ? pricePerKgCents(draft.priceCents, draft.netWeightGrams)
+      : null;
   const prepared = useMemo(
     () => (measure ? prepareLabel(draft, settings, today, spec, measure) : null),
     [draft, settings, today, spec, measure],
@@ -224,7 +230,7 @@ export function ProductEditor({
                 className={`${inputClass} font-mono`}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <Field label="Nombre de pièces">
                 <input
                   type="number"
@@ -235,6 +241,15 @@ export function ProductEditor({
                     update({ pieces: Math.trunc(Number(event.target.value)) })
                   }
                   className={inputClass}
+                />
+              </Field>
+              <Field label="Poids net (g)">
+                <DecimalInput
+                  key={`weight-${revision}`}
+                  value={draft.netWeightGrams}
+                  onChange={(value) =>
+                    update({ netWeightGrams: value === undefined ? -1 : value })
+                  }
                 />
               </Field>
               <Field label="Prix de vente (€)">
@@ -257,6 +272,11 @@ export function ProductEditor({
             </div>
           </div>
 
+          {perKg !== null ? (
+            <p className="mt-2 text-xs text-stone-600">
+              Prix au kg calculé : <strong>{formatPrice(perKg)}</strong>
+            </p>
+          ) : null}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <fieldset className="text-xs font-medium text-stone-600">
               <legend>Type de date</legend>

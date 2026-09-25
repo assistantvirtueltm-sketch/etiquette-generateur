@@ -195,6 +195,8 @@ function migrateProduct(raw: unknown, now: string): Product | null {
     barcode,
     symbology,
     pieces: asInteger(record.pieces, 1, 1),
+    netWeightGrams:
+      asNullableNumber(record.netWeightGrams) || null,
     priceCents: asInteger(record.priceCents, 0, 0),
     dateKind,
     shelfLifeDays: asInteger(record.shelfLifeDays, 3, 0),

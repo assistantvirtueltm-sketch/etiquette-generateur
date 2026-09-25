@@ -101,6 +101,7 @@ describe("migrate", () => {
         {
           ...painAuChocolat(),
           pieces: -3,
+          netWeightGrams: 0,
           priceCents: "trois euros",
           shelfLifeDays: 2.7,
           dateKind: "demain",
@@ -115,6 +116,7 @@ describe("migrate", () => {
     });
     const [product] = library.products;
     expect(product.pieces).toBe(1);
+    expect(product.netWeightGrams).toBeNull();
     expect(product.priceCents).toBe(0);
     expect(product.shelfLifeDays).toBe(2);
     expect(product.dateKind).toBe("dlc");

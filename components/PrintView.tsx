@@ -7,7 +7,13 @@ import { buttonClass, Card, IssueList, primaryButtonClass } from "@/components/u
 import { labelsPerSheet, type SheetSpec } from "@/lib/label-layout";
 import { planSheets, prepareLabel } from "@/lib/label-job";
 import type { MeasureText } from "@/lib/label-render";
-import { formatDate, formatPrice, labelDates, type Product } from "@/lib/product";
+import {
+  formatDate,
+  formatPrice,
+  formatWeight,
+  labelDates,
+  type Product,
+} from "@/lib/product";
 import type { LibrarySettings } from "@/lib/storage";
 
 interface PrintViewProps {
@@ -106,7 +112,8 @@ export function PrintView({
                       {product.name}
                     </span>
                     <span className="block text-xs text-stone-500">
-                      {formatPrice(product.priceCents)} ·{" "}
+                      {formatPrice(product.priceCents)}
+                      {product.netWeightGrams ? ` · ${formatWeight(product.netWeightGrams)}` : ""} ·{" "}
                       {product.dateKind.toUpperCase()} {dates.limit}
                     </span>
                     {label && !label.printable ? (
