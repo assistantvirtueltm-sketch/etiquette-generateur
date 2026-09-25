@@ -23,10 +23,18 @@ import {
 } from "@/lib/pdf";
 import { buttonClass, primaryButtonClass } from "@/components/ui";
 import { backupReminder, markExported, snooze } from "@/lib/backup";
+import {
+  getFolderBackupStatus,
+  getServerFolderBackupStatus,
+  initFolderBackup,
+  reactivateFolderBackup,
+  subscribeFolderBackup,
+} from "@/lib/folder-backup-store";
 import { formatDate, isBlankProduct, type Product } from "@/lib/product";
 import {
   applyImport,
   parseImport,
+  recordPrint,
   serializeLibrary,
   serializeReferences,
   upsertReference,
@@ -65,13 +73,19 @@ export default function Page() {
   const [env, setEnv] = useState<ClientEnv | null>(null);
   const [tab, setTab] = useState<Tab>("print");
   const [editing, setEditing] = useState<Editing>(null);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // null = pas encore touchées aujourd'hui : on reprend celles de la dernière
+  // impression (« même quantité que la veille »).
+  const [typedQuantities, setQuantities] = useState<Record<string, number> | null>(
+    null,
+  );
+  const quantities = typedQuantities ?? library.lastPrint?.quantities ?? {};
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
 
   // Les métriques de police servent à la fois au PDF et à l'aperçu.
   useEffect(() => {
     createMeasurer().then((measure) => setEnv({ measure, today: new Date() }));
+    void initFolderBackup();
   }, []);
 
   const activeProducts = useMemo(
@@ -142,8 +156,17 @@ export default function Page() {
       .filter((job) => job.count > 0);
     setBusy(true);
     try {
-      const pdf = await buildPrintPdf(jobs, library.settings, new Date(), SPEC);
+      const printedAt = new Date();
+      const pdf = await buildPrintPdf(jobs, library.settings, printedAt, SPEC);
       downloadPdf(pdf.bytes, pdf.fileName);
+      // Base des quantités proposées à la prochaine ouverture.
+      updateLibrary((current) => ({
+        ...current,
+        lastPrint: recordPrint(
+          Object.fromEntries(jobs.map((job) => [job.product.id, job.count])),
+          printedAt,
+        ),
+      }));
       setStatus({
         kind: "info",
         text: [
@@ -203,7 +226,7 @@ export default function Page() {
         summary = `Import terminé : ${result.productsAdded} fiche(s) ajoutée(s), ${result.productsUpdated} mise(s) à jour ; référentiel : ${result.referencesAdded} ajoutée(s), ${result.referencesUpdated} mise(s) à jour.`;
         return result.library;
       });
-      setQuantities({});
+      setQuantities(null);
       setStatus({
         kind: parsed.result.dropped > 0 ? "error" : "info",
         text:
@@ -225,6 +248,13 @@ export default function Page() {
       backup: markExported(current.backup, new Date()),
     }));
   }
+
+  const folder = useSyncExternalStore(
+    subscribeFolderBackup,
+    getFolderBackupStatus,
+    getServerFolderBackupStatus,
+  );
+  const folderPaused = folder.folderName !== null && folder.permission !== "granted";
 
   const reminder = env
     ? backupReminder(
@@ -281,6 +311,26 @@ export default function Page() {
             Masquer
           </button>
         </p>
+      ) : null}
+
+      {folderPaused ? (
+        <div
+          role="alert"
+          className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p>
+            <strong>Sauvegarde automatique en pause.</strong> Le navigateur
+            demande de réautoriser l&apos;écriture dans le dossier «{" "}
+            {folder.folderName} ».
+          </p>
+          <button
+            type="button"
+            className={primaryButtonClass}
+            onClick={() => void reactivateFolderBackup()}
+          >
+            Réactiver
+          </button>
+        </div>
       ) : null}
 
       {reminder ? (
@@ -343,8 +393,13 @@ export default function Page() {
           measure={env.measure}
           today={env.today}
           quantities={quantities}
+          prefilledFrom={
+            typedQuantities === null && library.lastPrint
+              ? new Date(library.lastPrint.printedAt)
+              : null
+          }
           onQuantityChange={(productId, count) =>
-            setQuantities((current) => ({ ...current, [productId]: count }))
+            setQuantities({ ...quantities, [productId]: count })
           }
           onReset={() => setQuantities({})}
           onPrint={() => void print()}

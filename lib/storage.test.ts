@@ -11,6 +11,7 @@ import {
   loadLibrary,
   migrate,
   parseImport,
+  recordPrint,
   referenceKey,
   saveLibrary,
   serializeLibrary,
@@ -274,6 +275,44 @@ describe("suivi des sauvegardes", () => {
     expect(
       contentChanged(library, { ...library, settings: { ...library.settings, offsetXMm: 9 } }),
     ).toBe(true);
+  });
+});
+
+describe("quantités de la dernière impression", () => {
+  it("ne garde que les quantités positives", () => {
+    const last = recordPrint({ a: 8, b: 0, c: -2, d: 1.5 }, new Date("2026-09-25T06:00:00.000Z"));
+    expect(last).toEqual({
+      printedAt: "2026-09-25T06:00:00.000Z",
+      quantities: { a: 8 },
+    });
+  });
+
+  it("survit à un rechargement et écarte l'illisible", () => {
+    stubStorage();
+    const library = sampleLibrary();
+    library.lastPrint = recordPrint({ "pain-au-chocolat": 16 }, new Date());
+    saveLibrary(library);
+    expect(loadLibrary().library.lastPrint).toEqual(library.lastPrint);
+    expect(migrate({ lastPrint: { printedAt: "hier", quantities: { a: 1 } } }).library.lastPrint)
+      .toBeNull();
+  });
+
+  it("reste propre au poste : ni exportée, ni écrasée par un import", () => {
+    const current = sampleLibrary();
+    current.lastPrint = recordPrint({ assortiment: 4 }, new Date());
+    expect(JSON.parse(serializeLibrary(current)).lastPrint).toBeUndefined();
+    for (const mode of ["merge", "replace"] as const) {
+      expect(applyImport(current, sampleLibrary(), mode).library.lastPrint).toEqual(
+        current.lastPrint,
+      );
+    }
+  });
+
+  it("n'est pas une modification à sauvegarder", () => {
+    const library = sampleLibrary();
+    expect(
+      contentChanged(library, { ...library, lastPrint: recordPrint({ a: 1 }, new Date()) }),
+    ).toBe(false);
   });
 });
 

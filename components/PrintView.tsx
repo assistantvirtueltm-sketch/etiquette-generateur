@@ -28,6 +28,8 @@ interface PrintViewProps {
   measure: MeasureText | null;
   today: Date;
   quantities: Readonly<Record<string, number>>;
+  /** Date de l'impression dont les quantités sont reprises, sinon null. */
+  prefilledFrom: Date | null;
   onQuantityChange: (productId: string, count: number) => void;
   onReset: () => void;
   onPrint: () => void;
@@ -48,6 +50,7 @@ export function PrintView({
   measure,
   today,
   quantities,
+  prefilledFrom,
   onQuantityChange,
   onReset,
   onPrint,
@@ -92,6 +95,12 @@ export function PrintView({
           </button>
         }
       >
+        {prefilledFrom && products.length > 0 ? (
+          <p className="mb-3 rounded-md bg-stone-100 px-3 py-2 text-sm text-stone-700">
+            Quantités reprises de la dernière impression, le{" "}
+            {formatDate(prefilledFrom)}. Les ajuster si besoin.
+          </p>
+        ) : null}
         {products.length === 0 ? (
           <p className="text-sm text-stone-500">
             Aucun produit actif. Créer ou activer des fiches dans l&apos;onglet
