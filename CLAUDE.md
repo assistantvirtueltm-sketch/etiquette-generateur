@@ -70,11 +70,12 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   de l'étiquette). Aucune position ne doit être écrite en dur ailleurs. Une
   planche est décrite par son **pas** (cote du massicot), pas par sa
   gouttière, et la matrice est **centrée** : les marges sont calculées
-  (`sheetMarginsMm`), pas saisies. Les cotes de `AGIPA_118987` sont
-  **provisoires** (matrice standard du format, gabarit du fabricant pas encore
-  relevé) : voir `docs/agipa-118987-gabarit.md`. Quand le gabarit est
-  disponible, les relever et les figer par un test qui compare aux valeurs
-  brutes du gabarit — ne pas les déduire d'un autre support au même format.
+  (`sheetMarginsMm`), pas saisies. Les cotes de `AGIPA_118987` viennent du
+  gabarit Word du fabricant (`docs/agipa-118987-gabarit.doc`, relevé dans
+  `docs/agipa-118987-gabarit.md`) — la seule source autoritaire — et sont
+  figées par le test `colle aux bornes en twips du gabarit`. Les mettre à
+  jour demande de relire le gabarit, pas d'ajuster la valeur attendue ; ne
+  pas les déduire d'un autre support au même format.
 - **Orientation** (réglage `orientation`, interrupteur de l'onglet Impression) :
   le support ne tourne jamais. `label-render` compose dans le cadre de lecture
   (`labelBoxMm` : 99,1 × 67,7 en paysage, 67,7 × 99,1 en portrait) ; `pdf.ts`

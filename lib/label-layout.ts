@@ -54,12 +54,12 @@ export interface PurchaseLink {
  * Agipa (Apli) réf. 118987 — 8 étiquettes de 99,1 × 67,7 mm par feuille A4,
  * coins arrondis, 2 colonnes × 4 lignes.
  *
- * ⚠️ Cotes PROVISOIRES : le gabarit du fabricant n'a pas encore été relevé
- * (cf. `docs/agipa-118987-gabarit.md`). Ce sont les cotes de la matrice
- * standard de ce format (2 × 4, gouttière verticale de 2,5 mm entre les
- * colonnes, lignes jointives, matrice centrée : marges 4,65 / 13,1 mm). À
- * confirmer sur le gabarit Word d'Apli, puis à figer par un test comme pour
- * l'ancienne 118990.
+ * Cotes relevées dans le gabarit Word du fabricant
+ * (`docs/agipa-118987-gabarit.doc`, cf. `docs/agipa-118987-gabarit.md`) :
+ * pas horizontal de 101,6 mm (gouttière de 2,5 mm entre les colonnes), lignes
+ * jointives de 67,7 mm, matrice de 200,7 × 270,8 mm centrée sur la feuille —
+ * ce qui redonne les marges du gabarit (4,66 / 13,11 mm) à 0,01 mm près.
+ * Figées par les tests « colle aux bornes en twips du gabarit ».
  */
 export const AGIPA_118987: SheetSpec = {
   id: "agipa-118987",

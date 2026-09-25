@@ -30,11 +30,33 @@ describe("conversions", () => {
   });
 });
 
-/**
- * Cotes PROVISOIRES (matrice standard du 99,1 × 67,7 mm), en attendant le
- * relevé du gabarit du fabricant : cf. `docs/agipa-118987-gabarit.md`.
- */
 describe("planche Agipa 118987", () => {
+  /**
+   * Valeurs brutes du gabarit Word du fabricant (`docs/agipa-118987-gabarit.doc`,
+   * cf. `docs/agipa-118987-gabarit.md`) : marges 264 / 743 twips, bornes de
+   * cellules −8, 5592, 5752, 11370 twips (étiquette, gouttière, étiquette),
+   * hauteur de ligne exacte 3838 twips. Ce test fige la seule source
+   * autoritaire des cotes : le mettre à jour demande de relire le gabarit.
+   */
+  it("colle aux bornes en twips du gabarit", () => {
+    const TWIPS_PER_MM = 1440 / 25.4;
+    const mm = (twips: number) => twips / TWIPS_PER_MM;
+    const margins = sheetMarginsMm(spec);
+    expect(Math.abs(margins.leftMm - mm(264))).toBeLessThan(0.02);
+    expect(Math.abs(margins.topMm - mm(743))).toBeLessThan(0.02);
+    // Bord gauche des cellules « étiquette » (1re et 3e colonne du tableau).
+    // Tolérance de 0,2 mm : le gabarit décale sa table de −8 twips (0,14 mm),
+    // compensation de bordure propre aux tableaux Word.
+    [-8, 5752].forEach((cellTwips, column) => {
+      expect(Math.abs(labelSlot(spec, column).xMm - mm(264 + cellTwips))).toBeLessThan(0.2);
+    });
+    // Le pas se lit d'une cellule « étiquette » à la suivante.
+    expect(spec.columnPitchMm).toBeCloseTo(mm(5752 - -8), 2);
+    expect(spec.labelWidthMm).toBeCloseTo(mm(11370 - 5752), 1);
+    expect(spec.labelHeightMm).toBeCloseTo(mm(3838), 2);
+    expect(spec.rowPitchMm).toBeCloseTo(mm(3838), 2);
+  });
+
   it("compte 8 étiquettes de 99,1 × 67,7 mm", () => {
     expect(labelsPerSheet(spec)).toBe(8);
     expect(spec.labelWidthMm).toBe(99.1);

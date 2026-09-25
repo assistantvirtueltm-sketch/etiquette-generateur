@@ -84,5 +84,5 @@ npm run build      # export statique dans out/
 Export statique (`output: "export"`) : Vercel détecte Next.js et sert `out/`
 sans configuration, aucun runtime serveur n'est requis.
 
-⚠️ Les cotes de la planche Agipa 118987 sont provisoires tant que le gabarit du
-fabricant n'a pas été relevé : voir `docs/agipa-118987-gabarit.md`.
+Les cotes de la planche Agipa 118987 sont relevées sur le gabarit du fabricant :
+voir `docs/agipa-118987-gabarit.md`.
