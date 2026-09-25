@@ -19,6 +19,12 @@ import {
   type ProductComponent,
   type ReferenceSheet,
 } from "./product";
+import {
+  DEFAULT_BACKUP,
+  markChanged,
+  migrateBackup,
+  type BackupState,
+} from "./backup";
 import type { Orientation } from "./label-layout";
 import type { SymbologyChoice } from "./symbology";
 
@@ -66,6 +72,11 @@ export interface Library {
   /** Compositions réutilisables (autocomplétion des fiches). */
   references: ReferenceSheet[];
   settings: LibrarySettings;
+  /**
+   * Suivi des sauvegardes JSON, propre à ce poste : jamais exporté, jamais
+   * écrasé par un import.
+   */
+  backup: BackupState;
 }
 
 export const DEFAULT_SETTINGS: LibrarySettings = {
@@ -83,6 +94,7 @@ export function emptyLibrary(): Library {
     products: [],
     references: [],
     settings: { ...DEFAULT_SETTINGS, store: { ...DEFAULT_SETTINGS.store } },
+    backup: { ...DEFAULT_BACKUP },
   };
 }
 
@@ -280,6 +292,12 @@ export function migrate(raw: unknown): MigrationResult {
       products,
       references,
       settings: migrateSettings(record.settings),
+      backup:
+        // Base antérieure au suivi des sauvegardes : rien ne prouve qu'elle a
+        // été exportée, le compte à rebours du rappel part de maintenant.
+        record.backup === undefined && (products.length > 0 || references.length > 0)
+          ? markChanged(DEFAULT_BACKUP, new Date())
+          : migrateBackup(record.backup),
     },
     dropped,
   };
@@ -319,10 +337,25 @@ export function saveLibrary(library: Library): { ok: boolean; error?: string } {
 
 /** Sauvegarde complète : produits, référentiel et réglages du magasin. */
 export function serializeLibrary(library: Library, now = new Date()): string {
+  // Le suivi des sauvegardes est propre au poste : il ne voyage pas.
+  const { backup: _backup, ...content } = library;
+  void _backup;
   return JSON.stringify(
-    { format: EXPORT_FORMAT, exportedAt: now.toISOString(), ...library },
+    { format: EXPORT_FORMAT, exportedAt: now.toISOString(), ...content },
     null,
     2,
+  );
+}
+
+/**
+ * Le contenu (fiches, référentiel, réglages) a-t-il changé ? Sert à ouvrir la
+ * période « non sauvegardé » ; le suivi des sauvegardes lui-même n'en est pas.
+ */
+export function contentChanged(previous: Library, next: Library): boolean {
+  return (
+    previous.products !== next.products ||
+    previous.references !== next.references ||
+    JSON.stringify(previous.settings) !== JSON.stringify(next.settings)
   );
 }
 
@@ -418,6 +451,7 @@ export function applyImport(
     return {
       library: {
         ...incoming,
+        backup: current.backup,
         settings: {
           ...incoming.settings,
           offsetXMm: current.settings.offsetXMm,

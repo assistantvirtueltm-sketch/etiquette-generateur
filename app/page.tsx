@@ -21,7 +21,9 @@ import {
   createMeasurer,
   LabelRefusedError,
 } from "@/lib/pdf";
-import { isBlankProduct, type Product } from "@/lib/product";
+import { buttonClass, primaryButtonClass } from "@/components/ui";
+import { backupReminder, markExported, snooze } from "@/lib/backup";
+import { formatDate, isBlankProduct, type Product } from "@/lib/product";
 import {
   applyImport,
   parseImport,
@@ -212,6 +214,26 @@ export default function Page() {
     });
   }
 
+  /** Export complet : télécharge le JSON et note la sauvegarde sur ce poste. */
+  function exportAll() {
+    downloadJson(
+      serializeLibrary(library),
+      `etiquettes-bvp-sauvegarde-${isoToday()}.json`,
+    );
+    updateLibrary((current) => ({
+      ...current,
+      backup: markExported(current.backup, new Date()),
+    }));
+  }
+
+  const reminder = env
+    ? backupReminder(
+        library.backup,
+        library.products.length > 0 || library.references.length > 0,
+        env.today,
+      )
+    : null;
+
   const notice =
     storeError ??
     (dropped > 0
@@ -259,6 +281,40 @@ export default function Page() {
             Masquer
           </button>
         </p>
+      ) : null}
+
+      {reminder ? (
+        <div
+          role="alert"
+          className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p>
+            <strong>Pensez à sauvegarder vos fiches.</strong>{" "}
+            {reminder.daysSinceExport === null
+              ? "Aucune sauvegarde JSON n'a encore été faite sur ce poste"
+              : `Dernière sauvegarde il y a ${reminder.daysSinceExport} jour${reminder.daysSinceExport > 1 ? "s" : ""}`}
+            , et des modifications attendent depuis le{" "}
+            {formatDate(reminder.unsavedSince)}. Un nettoyage du navigateur les
+            effacerait.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" className={primaryButtonClass} onClick={exportAll}>
+              Sauvegarder maintenant
+            </button>
+            <button
+              type="button"
+              className={buttonClass}
+              onClick={() =>
+                updateLibrary((current) => ({
+                  ...current,
+                  backup: snooze(current.backup, new Date()),
+                }))
+              }
+            >
+              Me le rappeler demain
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {status ? (
@@ -322,11 +378,12 @@ export default function Page() {
           busy={busy}
           onSettingsChange={updateSettings}
           onCalibration={() => void printCalibration()}
-          onExportAll={() =>
-            downloadJson(
-              serializeLibrary(library),
-              `etiquettes-bvp-sauvegarde-${isoToday()}.json`,
-            )
+          onExportAll={exportAll}
+          onBackupIntervalChange={(intervalDays) =>
+            updateLibrary((current) => ({
+              ...current,
+              backup: { ...current.backup, intervalDays, snoozedUntil: null },
+            }))
           }
           onExportReferences={() =>
             downloadJson(

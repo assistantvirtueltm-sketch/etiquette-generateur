@@ -14,6 +14,10 @@ imprimer tel quel.
   réimporter sur le même poste ou sur un autre ; export du **référentiel seul**
   (compositions sans code caisse ni prix) pour partager des fiches entre
   magasins.
+- **Rappel de sauvegarde** : quand des modifications attendent depuis plus de
+  3 jours (réglable) sans export complet, un bandeau le rappelle à
+  l'ouverture de l'app, avec « Sauvegarder maintenant » et « Me le rappeler
+  demain ». Suivi propre à chaque poste.
 - Code-barres **vectoriel** (EAN-13 de la caisse), net à toutes les
   résolutions.
 

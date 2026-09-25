@@ -9,7 +9,9 @@ import {
   Field,
   inputClass,
 } from "@/components/ui";
+import { BACKUP_INTERVALS } from "@/lib/backup";
 import type { SheetSpec } from "@/lib/label-layout";
+import { formatDate } from "@/lib/product";
 import type {
   ImportMode,
   Library,
@@ -28,6 +30,7 @@ interface SettingsViewProps {
   onSettingsChange: (patch: Partial<LibrarySettings>) => void;
   onCalibration: () => void;
   onExportAll: () => void;
+  onBackupIntervalChange: (intervalDays: number) => void;
   onExportReferences: () => void;
   onImport: (file: File, mode: ImportMode) => void;
   onRemoveReference: (id: string) => void;
@@ -69,6 +72,7 @@ export function SettingsView({
   onSettingsChange,
   onCalibration,
   onExportAll,
+  onBackupIntervalChange,
   onExportReferences,
   onImport,
   onRemoveReference,
@@ -237,6 +241,39 @@ export function SettingsView({
             <button type="button" className={buttonClass} onClick={onExportAll}>
               Exporter toute la base (fiches, référentiel, magasin)
             </button>
+            <dl className="my-2 space-y-1 text-xs">
+              <div className="flex justify-between gap-3">
+                <dt className="text-stone-500">Dernière sauvegarde sur ce poste</dt>
+                <dd className="text-stone-800">
+                  {library.backup.lastExportAt
+                    ? formatDate(new Date(library.backup.lastExportAt))
+                    : "jamais"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-stone-500">Modifications non sauvegardées</dt>
+                <dd className="text-stone-800">
+                  {library.backup.unsavedSince
+                    ? `depuis le ${formatDate(new Date(library.backup.unsavedSince))}`
+                    : "aucune"}
+                </dd>
+              </div>
+            </dl>
+            <Field label="Rappel de sauvegarde">
+              <select
+                value={library.backup.intervalDays}
+                onChange={(event) =>
+                  onBackupIntervalChange(Number(event.target.value))
+                }
+                className={inputClass}
+              >
+                {BACKUP_INTERVALS.map((option) => (
+                  <option key={option.days} value={option.days}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <button
               type="button"
               className={buttonClass}

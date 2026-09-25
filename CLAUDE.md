@@ -124,6 +124,14 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   retirée. La version à l'ouverture sert à « Annuler mes modifications ».
   La fiche ouverte (`editing`) est tenue par la page pour survivre à un
   changement d'onglet.
+- `lib/backup.ts` — rappel de sauvegarde JSON (pas de serveur : rappel dans
+  l'app, à l'ouverture). `library.backup` est **propre au poste** : exclu de
+  l'export, conservé par `applyImport`. `updateLibrary` ouvre la période « non
+  sauvegardé » (`markChanged`) à chaque changement de contenu
+  (`contentChanged` : fiches, référentiel, réglages — pas le suivi lui-même) ;
+  l'export complet la referme (`markExported`). Rappel si des modifications
+  attendent depuis `intervalDays` (3 par défaut, réglable, 0 = jamais),
+  repoussable de 24 h.
 - `lib/library-store.ts` — store externe lu par `useSyncExternalStore`. La
   persistance se fait **à l'écriture**, pas dans un effet (la règle
   `react-hooks/set-state-in-effect` interdit le `setState` dans un effet) ;

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assortiment, painAuChocolat, SAMPLE_SETTINGS } from "./fixtures";
 import {
   applyImport,
+  contentChanged,
   DEFAULT_SETTINGS,
   emptyLibrary,
   EXPORT_FORMAT,
@@ -242,6 +243,37 @@ describe("référentiel", () => {
 
   it("ignore une composition sans nom", () => {
     expect(upsertReference([], { ...painAuChocolat(), name: " " })).toEqual([]);
+  });
+});
+
+describe("suivi des sauvegardes", () => {
+  it("ne met pas le suivi du poste dans le fichier exporté", () => {
+    const library = sampleLibrary();
+    library.backup = { ...library.backup, lastExportAt: "2026-09-01T00:00:00.000Z" };
+    expect(JSON.parse(serializeLibrary(library)).backup).toBeUndefined();
+  });
+
+  it("démarre le compte à rebours pour une base antérieure au suivi", () => {
+    const { library } = migrate({ products: [painAuChocolat()] });
+    expect(library.backup.unsavedSince).not.toBeNull();
+    expect(migrate({ products: [] }).library.backup.unsavedSince).toBeNull();
+  });
+
+  it("garde le suivi du poste lors d'un import", () => {
+    const current = sampleLibrary();
+    current.backup = { ...current.backup, intervalDays: 14 };
+    for (const mode of ["merge", "replace"] as const) {
+      expect(applyImport(current, sampleLibrary(), mode).library.backup.intervalDays).toBe(14);
+    }
+  });
+
+  it("ne compte comme modification que le contenu", () => {
+    const library = sampleLibrary();
+    expect(contentChanged(library, { ...library, backup: { ...library.backup } })).toBe(false);
+    expect(contentChanged(library, { ...library, products: [...library.products] })).toBe(true);
+    expect(
+      contentChanged(library, { ...library, settings: { ...library.settings, offsetXMm: 9 } }),
+    ).toBe(true);
   });
 });
 

@@ -6,7 +6,9 @@
  * (export statique) reçoit un instantané vide et stable, ce qui évite tout
  * écart d'hydratation.
  */
+import { markChanged } from "./backup";
 import {
+  contentChanged,
   emptyLibrary,
   loadLibrary,
   saveLibrary,
@@ -55,7 +57,12 @@ export function updateLibrary(
   updater: (current: Library) => Library,
 ): LibraryState {
   const current = getLibraryState();
-  const library = updater(current.library);
+  const updated = updater(current.library);
+  // Toute modification du contenu ouvre (ou prolonge) la période « non
+  // sauvegardé » qui déclenche le rappel d'export.
+  const library = contentChanged(current.library, updated)
+    ? { ...updated, backup: markChanged(updated.backup, new Date()) }
+    : updated;
   const saved = saveLibrary(library);
   state = {
     library,
