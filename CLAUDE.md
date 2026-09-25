@@ -4,18 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Webapp d'impression d'étiquettes codes-barres : l'utilisateur saisit un code
-(EAN-13 par défaut) + un libellé produit, l'app génère à la volée un PDF A4
-imprimable d'une **planche mono-produit** (65 étiquettes identiques) sur support
-Apli/Agipa réf. 118990, puis le télécharge. Voir `README.md` pour l'usage.
+Générateur d'étiquettes réglementaires BVP (boulangerie-viennoiserie-
+pâtisserie) pour un magasin U, en remplacement d'une balance étiqueteuse Digi.
+L'utilisateur tient des **fiches produits** ; chaque jour il choisit dans la
+« mercuriale » le nombre d'étiquettes par produit actif, et l'app génère un PDF
+A4 **multi-produits** sur planches Agipa 118987 (8 étiquettes 99,1 × 67,7 mm).
+Projet public : chaque magasin saisit ses propres codes caisse. Voir
+`README.md` pour l'usage.
 
 Contraintes de cadrage (décidées, ne pas les réintroduire en question) :
 - **Aucune base de données, aucune authentification, aucune API route.** Tout est
   client-side ; `next.config.ts` force `output: "export"` pour qu'aucun runtime
   serveur ne soit requis (déploiement Vercel zéro config).
-- La bibliothèque de produits vit **uniquement dans le `localStorage`**.
+- Les données vivent **uniquement dans le `localStorage`** ; la sauvegarde est
+  un fichier JSON (export complet ou référentiel seul) à réimporter.
 - PDF construit dans le navigateur, **codes-barres vectoriels** : ni image, ni
-  canvas rastérisé (des barres floues cassent la lecture en caisse).
+  canvas rastérisé (des barres floues cassent la lecture en caisse). Le logo
+  du magasin est la seule image du PDF.
+- Code-barres = EAN-13 généré par la caisse (préfixe 2), collé tel quel ; le
+  prix n'y est pas encodé. **Vente à la pièce uniquement** (pas de poids).
+- Pas d'impression à partir d'une étiquette donnée (planche entamée) ni
+  d'historique des impressions : volontairement abandonnés.
 
 ## Commands
 
@@ -30,76 +39,92 @@ npm test -- -t "clé de contrôle" # un seul test par son nom
 npm run test:watch
 ```
 
+Vitest ne ramasse que `lib/**/*.test.ts` (`vitest.config.mts`) : les composants
+n'ont pas de tests, toute logique testable doit vivre dans `lib/`.
+`lib/fixtures.ts` contient des fiches réelles (pain au chocolat, assortiment de
+3 mini viennoiseries) : s'en servir pour les tests de mise en page.
+
 Vérification dans un vrai navigateur (aucune dépendance de test E2E n'est
 installée) : `npm run build`, servir `out/` (`python3 -m http.server`), puis
 piloter Chromium avec `npm install --no-save playwright` et
-`chromium.launch({ executablePath: "/opt/pw-browsers/chromium" })`.
+`chromium.launch({ executablePath: "/opt/pw-browsers/chromium" })`. Pour
+regarder un PDF généré : `pip install pymupdf` puis `get_pixmap()`.
 
 ## Architecture
 
-Pipeline, du champ de saisie au PDF — chaque étage est un module pur et testé :
+Pipeline, de la fiche produit au PDF — chaque étage est un module pur et testé :
 
 ```
-saisie ──▶ symbology.ts       validation / détection du type / clé de contrôle
-       ──▶ barcode-modules.ts bwip-js raw() → largeurs de barres en modules
-       ──▶ label-render.ts    primitives de dessin en mm (rects + textes)
-       ──┬▶ pdf.ts            pdf-lib → planche A4 (rectangles vectoriels)
-         └▶ LabelPreview.tsx  même contenu en SVG → l'aperçu = l'impression
+fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, prix
+      ──▶ symbology.ts       validation du code caisse / clé de contrôle
+      ──▶ barcode-modules.ts bwip-js raw() → largeurs de barres en modules
+      ──▶ label-render.ts    primitives en mm (barres, textes, logo) + débordement
+          (text-layout.ts : gras des allergènes, coupure des lignes)
+      ──▶ label-job.ts       prepareLabel : tout ce qui précède, pour une date
+      ──┬▶ pdf.ts            pdf-lib → N feuilles A4 (buildPrintPdf)
+        └▶ LabelPreview.tsx  même contenu en SVG → l'aperçu = l'impression
 ```
 
-- `lib/label-layout.ts` — **source unique des cotes**. Aucune position ne doit
-  être écrite en dur ailleurs. Une planche est décrite par son **pas** (cote du
-  massicot), pas par sa gouttière, et la matrice est **centrée** sur la page :
-  les marges sont donc calculées (`sheetMarginsMm`), pas saisies. Pour la
-  118990 : étiquette 38 × 21,2 mm, pas 38 × 21,2 mm (**étiquettes jointives,
-  aucune gouttière**), matrice 190 × 275,6 mm, marges calculées 10,0 / 10,7 mm.
-  Les cotes viennent du gabarit du fabricant, relevé dans
-  `docs/apli-118990-gabarit.md` — la seule source autoritaire ; ne pas les
-  déduire d'un autre support au même format (la matrice Avery L7651 a le même
-  38 × 21,2 mm mais un pas de 40,6 mm, ce qui fait déborder les colonnes
-  extérieures de 5 mm).
-- Ajouter un format de planche = ajouter une `SheetSpec` à `SHEET_SPECS`
-  (cotes relevées sur le gabarit du fabricant, plus un `purchase` — lien
-  marchand https + référence vendue). `components/SheetSpecCard.tsx` en dérive
-  la fiche du support et le bouton d'achat, sans code par format ; les tests
-  `catalogue des planches` s'appliquent automatiquement au nouveau format.
-  Tant que l'UI ne propose qu'un format, `app/page.tsx` fixe `SPEC`.
-- `lib/barcode-modules.ts` — n'utilise **que** `bwipjs.raw()` (sous-chemin
-  `bwip-js/browser`) : `sbs` est la suite des largeurs en modules commençant par
-  une barre. On ne charge aucune police bwip-js et on ne rastérise rien.
-- `lib/label-render.ts` — décide de la X-dimension : nominale (0,33 mm) si elle
-  rentre, sinon réduite pour que le code **et ses zones de silence** tiennent
-  dans la largeur utile ; expose le grossissement et avertit sous 0,25 mm.
-  Mesure les textes via une fonction injectée (`MeasureText`) pour rester pur.
-- `lib/pdf.ts` — fournit ce mesureur depuis les métriques Helvetica de pdf-lib,
-  **partagé avec l'aperçu** : l'écran et le papier ont la même mise en page au
-  dixième de mm. Assainit aussi les libellés (polices standard = WinAnsi
-  uniquement, sinon `drawText` échoue) et produit la planche de calibration.
-- `lib/storage.ts` — seul accès au `localStorage`, schéma versionné, `migrate()`
-  ne lève jamais et écarte les entrées illisibles au lieu de tout effacer.
+- `lib/label-layout.ts` — **source unique des cotes** (planche et `LABEL_STYLE`
+  de l'étiquette). Aucune position ne doit être écrite en dur ailleurs. Une
+  planche est décrite par son **pas** (cote du massicot), pas par sa
+  gouttière, et la matrice est **centrée** : les marges sont calculées
+  (`sheetMarginsMm`), pas saisies. Les cotes de `AGIPA_118987` sont
+  **provisoires** (matrice standard du format, gabarit du fabricant pas encore
+  relevé) : voir `docs/agipa-118987-gabarit.md`. Quand le gabarit est
+  disponible, les relever et les figer par un test qui compare aux valeurs
+  brutes du gabarit — ne pas les déduire d'un autre support au même format.
+- `labelSlot(spec, index, offset)` est le seul point qui place une étiquette ;
+  le décalage imprimante X/Y (planche de calibration, réglages) passe par lui.
+- Ajouter un format = ajouter une `SheetSpec` à `SHEET_SPECS` (+ `purchase`).
+  Les tests `catalogue des planches` s'y appliquent automatiquement ; tant que
+  l'UI ne propose qu'un format, `app/page.tsx` fixe `SPEC`.
+- `lib/label-render.ts` — mise en page d'une étiquette : en-tête (logo +
+  dénomination), corps (ingrédients par composant, traces, origine, valeurs
+  nutritionnelles, mentions), pied (code-barres à gauche ; dates, quantité,
+  réf. fournisseur, prix à droite), ligne du magasin. Le corps prend le plus
+  grand corps qui tient, **jamais sous `minFontSizePt(minXHeightMm)`** (hauteur
+  d'x légale INCO : 1,2 mm, ou 0,9 mm si emballage < 80 cm²). Si ça ne tient
+  pas : `fits: false` + erreur bloquante. **Ne jamais tronquer** un texte
+  réglementaire (c'était le défaut des étiquettes Digi d'origine).
+- `lib/text-layout.ts` — mots entièrement en MAJUSCULES (≥ 3 lettres) = gras
+  (convention allergènes, cf. `lib/allergens.ts` qui détecte aussi les
+  allergènes laissés en minuscules). Coupure aux espaces ordinaires et après
+  `, ; : ) /` ; l'espace insécable lie un nombre à son unité. Assainit les
+  textes pour WinAnsi (polices standard, sinon `drawText` échoue).
+- `lib/pdf.ts` — fournit le mesureur Helvetica de pdf-lib, **partagé avec
+  l'aperçu** : écran et papier ont la même mise en page au dixième de mm.
+  `buildPrintPdf` refuse tout le lot (`LabelRefusedError`) si une seule fiche
+  n'est pas imprimable ; produit aussi la planche de calibration.
+- `lib/storage.ts` — seul accès au `localStorage`, schéma versionné (v2 ;
+  migre la v1 mono-produit de l'ancienne clé), `migrate()` ne lève jamais et
+  écarte les entrées illisibles. Le fichier d'export a le même schéma.
+  `applyImport` : fusion (fiches par id, référentiel par clé réf. fournisseur
+  sinon nom) ou remplacement ; le décalage imprimante n'est jamais importé.
+  Le **référentiel** (`references`) = compositions réutilisables, alimenté à
+  chaque enregistrement de fiche, proposé en autocomplétion de la dénomination.
 - `lib/library-store.ts` — store externe lu par `useSyncExternalStore`. La
   persistance se fait **à l'écriture**, pas dans un effet (la règle
   `react-hooks/set-state-in-effect` interdit le `setState` dans un effet) ;
   l'instantané serveur est vide et stable pour éviter tout écart d'hydratation.
-- `app/page.tsx` — seul détenteur de l'état d'UI (brouillon, sélection, statut).
-  Tout ce qui touche `localStorage`, pdf-lib ou bwip-js est dans des composants
-  `"use client"`.
+- `app/page.tsx` — état d'UI (onglet, quantités du jour, statut) ; trois
+  écrans : `PrintView` (mercuriale), `ProductsView`/`ProductEditor` (espace
+  dédié à la modification des fiches), `SettingsView`. La date du jour et le
+  mesureur ne sont créés que côté client (évite l'écart d'hydratation).
 
 ## Règles de travail
 
 - Le PDF ne contient **ni traits de découpe ni fond** : le support est
   prédécoupé, toute encre hors zone est visible sur la planche.
 - Toute modification des cotes ou du rendu se vérifie sur un PDF réellement
-  généré (le mesurer), pas seulement à la lecture du diff.
-- Les cotes de planche sont figées par deux tests de `lib/label-layout.test.ts` :
-  `retrouve les cotes du gabarit du fabricant` et `colle aux bornes en twips du
-  gabarit`, qui comparent les emplacements calculés aux valeurs brutes du
-  gabarit Word. Les mettre à jour demande de relire le gabarit, pas d'ajuster la
-  valeur attendue.
+  généré (le mesurer / le regarder), pas seulement à la lecture du diff.
 - `lib/barcode-decode.test.ts` est le garde-fou central : il reconstruit la
-  trame de modules depuis les rectangles millimétrés puis **décode** le résultat
-  avec les tables EAN normatives. Un changement de mise en page qui casse la
-  lisibilité du code y échoue. L'étendre plutôt que le contourner.
+  trame de modules depuis les rectangles millimétrés d'une étiquette BVP
+  complète puis **décode** le résultat avec les tables EAN normatives (dont
+  les codes caisse réels 2000000271040…). L'étendre plutôt que le contourner.
+  EAN-8/UPC-A sont relus ; Code 128 n'a pas encore ce filet.
+- Les contrôles réglementaires (`productIssues`, débordement) aident mais ne
+  valent pas validation qualité : ne pas les présenter comme un avis juridique.
 - Les tests tournent en environnement node : pour du code qui touche au
   `localStorage`, stubber `window` (`vi.stubGlobal`) comme dans
   `lib/storage.test.ts`.

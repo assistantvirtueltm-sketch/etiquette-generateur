@@ -6,6 +6,8 @@ import type { LabelContent } from "@/lib/label-render";
 interface LabelPreviewProps {
   spec: SheetSpec;
   content: LabelContent;
+  /** Logo du magasin (data URL), dessiné à l'emplacement calculé. */
+  logoUrl?: string | null;
   /** Facteur d'agrandissement à l'écran (px par mm). */
   pxPerMm?: number;
 }
@@ -17,7 +19,8 @@ interface LabelPreviewProps {
 export function LabelPreview({
   spec,
   content,
-  pxPerMm = 8,
+  logoUrl,
+  pxPerMm = 5,
 }: LabelPreviewProps) {
   return (
     <svg
@@ -26,7 +29,10 @@ export function LabelPreview({
       width={spec.labelWidthMm * pxPerMm}
       height={spec.labelHeightMm * pxPerMm}
       viewBox={`0 0 ${spec.labelWidthMm} ${spec.labelHeightMm}`}
-      className="rounded-xs border border-dashed border-stone-300 bg-white"
+      className={`max-w-full rounded-md border bg-white ${
+        content.fits ? "border-stone-300" : "border-red-500"
+      }`}
+      style={{ height: "auto" }}
     >
       {content.bars.map((bar, index) => (
         <rect
@@ -50,10 +56,21 @@ export function LabelPreview({
           textLength={text.widthMm}
           lengthAdjust="spacingAndGlyphs"
           fill="#000"
+          xmlSpace="preserve"
         >
           {text.text}
         </text>
       ))}
+      {content.logo && logoUrl ? (
+        <image
+          href={logoUrl}
+          x={content.logo.xMm}
+          y={content.logo.yMm}
+          width={content.logo.widthMm}
+          height={content.logo.heightMm}
+          preserveAspectRatio="none"
+        />
+      ) : null}
     </svg>
   );
 }

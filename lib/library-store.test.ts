@@ -8,18 +8,11 @@ import {
   subscribeLibrary,
   updateLibrary,
 } from "./library-store";
-import { newProductId, STORAGE_KEY, type StoredProduct } from "./storage";
+import { emptyProduct, type Product } from "./product";
+import { STORAGE_KEY } from "./storage";
 
-function product(name: string, input: string): StoredProduct {
-  const now = new Date().toISOString();
-  return {
-    id: newProductId(),
-    name,
-    input,
-    symbology: "auto",
-    createdAt: now,
-    updatedAt: now,
-  };
+function product(name: string, barcode: string): Product {
+  return { ...emptyProduct(), name, barcode };
 }
 
 function stubStorage(initial: Record<string, string> = {}) {
@@ -57,14 +50,14 @@ describe("library store", () => {
   it("charge la bibliothèque existante au premier accès", () => {
     stubStorage({
       [STORAGE_KEY]: JSON.stringify({
-        version: 1,
-        products: [{ name: "Café", input: "5901234123457" }],
-        settings: { offsetXMm: 0.3, offsetYMm: 0, startIndex: 4 },
+        version: 2,
+        products: [product("Café", "5901234123457")],
+        settings: { offsetXMm: 0.3, offsetYMm: 0 },
       }),
     });
     const state = getLibraryState();
     expect(state.library.products).toHaveLength(1);
-    expect(state.library.settings.startIndex).toBe(4);
+    expect(state.library.settings.offsetXMm).toBe(0.3);
   });
 
   it("persiste à l'écriture et notifie les abonnés", () => {
@@ -107,7 +100,7 @@ describe("library store", () => {
 
   it("efface le bandeau d'information une fois lu", () => {
     stubStorage({
-      [STORAGE_KEY]: JSON.stringify({ products: [{ name: "Cassé" }] }),
+      [STORAGE_KEY]: JSON.stringify({ products: [{ cassé: true }] }),
     });
     expect(getLibraryState().dropped).toBe(1);
     const listener = vi.fn();

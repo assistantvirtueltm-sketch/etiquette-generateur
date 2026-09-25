@@ -1,17 +1,60 @@
-# Planches d'étiquettes codes-barres
+# Étiquettes BVP
 
-Webapp d'impression d'étiquettes codes-barres. On saisit un libellé produit et un
-code (EAN-13, EAN-8, UPC-A ou Code 128), l'app génère un **PDF A4 vectoriel** :
-une planche mono-produit de 65 étiquettes identiques au format
-**Apli/Agipa 118990** (38 × 21,2 mm), à télécharger et imprimer.
+Générateur d'étiquettes réglementaires pour le rayon boulangerie-viennoiserie-
+pâtisserie, en remplacement d'une balance étiqueteuse. On tient des **fiches
+produits** (dénomination, ingrédients et allergènes, valeurs nutritionnelles,
+code-barres créé par la caisse, prix, durée de vie), puis chaque jour on
+choisit le nombre d'étiquettes par produit : l'app génère un **PDF A4** sur
+planches **Agipa 118987** (8 étiquettes de 99,1 × 67,7 mm par feuille), à
+imprimer tel quel.
 
-- Aucune base de données, aucune authentification, aucun appel réseau : tout est
-  calculé dans le navigateur.
-- La bibliothèque de produits est mémorisée dans le `localStorage` pour
-  régénérer un PDF à la volée, sans ressaisie. Export/import JSON pour la
-  sauvegarder ou la transférer.
-- Codes-barres **vectoriels** (rectangles PDF), donc nets à toutes les
-  résolutions d'impression.
+- Aucune base de données, aucun compte, aucun appel réseau : tout est calculé
+  dans le navigateur. Les fiches vivent dans le `localStorage`.
+- **Sauvegarde JSON** : export complet (fiches, référentiel, magasin) à
+  réimporter sur le même poste ou sur un autre ; export du **référentiel seul**
+  (compositions sans code caisse ni prix) pour partager des fiches entre
+  magasins.
+- Code-barres **vectoriel** (EAN-13 de la caisse), net à toutes les
+  résolutions.
+
+## Ce que l'étiquette contient
+
+En-tête : logo du magasin et dénomination de vente. Corps : ingrédients (un
+paragraphe par composant d'assortiment), allergènes **en gras**, traces
+éventuelles, origine, valeurs nutritionnelles pour 100 g, mentions
+(« Produit décongelé, ne pas recongeler », conservation, « Cuit et emballé le
+même jour »). Pied : code-barres, date d'emballage, DLC (« À consommer
+jusqu'au ») ou DDM (« À consommer de préférence avant le ») calculée à partir
+de la durée de vie du produit, nombre de pièces, référence fournisseur, prix ;
+nom et adresse du magasin.
+
+**Garde-fous :**
+
+- Rien n'est jamais tronqué ni imprimé sous la hauteur d'x minimale légale
+  (1,2 mm, ou 0,9 mm pour un emballage de moins de 80 cm², règlement INCO
+  art. 13). Une fiche trop longue est refusée à l'impression, avec le
+  dépassement en mm.
+- Les allergènes s'écrivent en MAJUSCULES dans la liste des ingrédients : ils
+  sont imprimés en gras. L'app repère les allergènes probables laissés en
+  minuscules et propose de les corriger.
+- Une fiche incomplète (code-barres invalide, prix, ingrédients, adresse du
+  magasin…) bloque l'impression.
+
+Ces contrôles aident, ils ne remplacent pas la validation des fiches par le
+responsable qualité.
+
+## Utilisation quotidienne
+
+1. **Réglages** (une fois) : enseigne, adresse complète, logo ; imprimer la
+   planche de calibration et régler le décalage si besoin.
+2. **Fiches produits** : créer les fiches à partir des cartons fournisseurs.
+   En tapant la dénomination, les fiches du référentiel sont proposées et
+   leur composition peut être reprise. Coller le code-barres créé en caisse.
+3. **Impression du jour** : saisir le nombre d'étiquettes de chaque produit
+   actif. L'app indique combien de feuilles mettre dans l'imprimante, puis
+   télécharge le PDF.
+4. Imprimer **à 100 %** : dans la boîte de dialogue d'impression, choisir
+   « Taille réelle » / « 100 % » et **désactiver** « Ajuster à la page ».
 
 ## Développement
 
@@ -24,18 +67,10 @@ npm run typecheck
 npm run build      # export statique dans out/
 ```
 
-## Impression
-
-1. Choisir le produit, éventuellement la première étiquette libre (planche
-   entamée) et le nombre d'étiquettes.
-2. Télécharger le PDF, puis l'imprimer **à 100 %** : dans la boîte de dialogue
-   d'impression, choisir « Taille réelle » / « 100 % » et **désactiver**
-   « Ajuster à la page », sinon toute la planche est décalée.
-3. En cas de décalage résiduel de l'imprimante, imprimer la *planche de
-   calibration* sur papier ordinaire, la superposer au support adhésif, puis
-   régler le décalage X/Y (mémorisé).
-
 ## Déploiement
 
 Export statique (`output: "export"`) : Vercel détecte Next.js et sert `out/`
 sans configuration, aucun runtime serveur n'est requis.
+
+⚠️ Les cotes de la planche Agipa 118987 sont provisoires tant que le gabarit du
+fabricant n'a pas été relevé : voir `docs/agipa-118987-gabarit.md`.
