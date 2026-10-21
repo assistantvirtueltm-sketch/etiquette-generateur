@@ -159,7 +159,9 @@ export function bodyParagraphs(product: Product): Run[][] {
   const multiple = components.length > 1;
   for (const component of components) {
     const runs: Run[] = [];
-    if (multiple) runs.push({ text: `${component.name.trim()} – `, bold: true });
+    if (multiple) {
+      runs.push({ text: `${bindUnits(component.name.trim())} – `, bold: true });
+    }
     runs.push({ text: "Ingrédients : ", bold: false });
     runs.push(...emphasisRuns(bindUnits(component.ingredients.trim())));
     paragraphs.push(runs);
@@ -167,13 +169,13 @@ export function bodyParagraphs(product: Product): Run[][] {
   if (product.mayContain.trim()) {
     paragraphs.push([
       { text: "Peut contenir : ", bold: false },
-      ...emphasisRuns(product.mayContain.trim()),
+      ...emphasisRuns(bindUnits(product.mayContain.trim())),
     ]);
   }
   if (product.origin.trim()) {
     paragraphs.push([
       { text: "Origine : ", bold: false },
-      ...emphasisRuns(product.origin.trim()),
+      ...emphasisRuns(bindUnits(product.origin.trim())),
     ]);
   }
   for (const table of product.nutrition) {
@@ -184,7 +186,7 @@ export function bodyParagraphs(product: Product): Run[][] {
     mentions.push({ text: "Produit décongelé, ne pas recongeler. ", bold: true });
   }
   if (product.storage.trim()) {
-    mentions.push({ text: `${product.storage.trim()} `, bold: false });
+    mentions.push({ text: `${bindUnits(product.storage.trim())} `, bold: false });
   }
   if (product.bakedToday) {
     mentions.push({ text: "Cuit et emballé le même jour.", bold: false });
@@ -270,7 +272,7 @@ export function buildLabelContent(input: BuildLabelContentInput): LabelContent {
   const nameX = logo ? innerLeft + logo.widthMm + style.gapLogoNameMm : innerLeft;
   const nameWidth = innerLeft + innerWidth - nameX;
   const nameRuns = sanitizeRuns(
-    [{ text: product.name.trim().toUpperCase(), bold: true }],
+    [{ text: bindUnits(product.name.trim()).toUpperCase(), bold: true }],
     sanitized,
   );
   let name = block([], minPt);

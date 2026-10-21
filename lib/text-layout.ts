@@ -76,11 +76,12 @@ export function emphasisRuns(text: string): Run[] {
 /**
  * Jetons insécables : un mot suivi de sa ponctuation et de ses espaces. On
  * s'autorise aussi à couper après « , ; : ) / » collés au mot suivant, fréquent
- * dans les listes d'ingrédients recopiées (« sucre;levure;sel »). Seule
- * l'espace ordinaire est sécable : l'espace insécable (U+00A0) lie un nombre à
- * son unité (« 19 % », « 1 g »).
+ * dans les listes d'ingrédients recopiées (« sucre;levure;sel »), sauf quand
+ * un chiffre suit : « 12,5 » ou « 1/2 » ne se coupent pas. Seule l'espace
+ * ordinaire est sécable : l'espace insécable (U+00A0) lie un nombre à son
+ * unité (« 19 % », « 1 g »).
  */
-const TOKEN = /[^ ,;:)/]*[,;:)/]* */g;
+const TOKEN = /(?:[^ ,;:)/]|[,;:/](?=\d))*[,;:)/]* */g;
 
 interface Token {
   text: string;

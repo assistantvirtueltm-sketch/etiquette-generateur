@@ -46,6 +46,22 @@ describe("wrapRuns", () => {
     }
   });
 
+  it("ne coupe jamais un nombre décimal ni une fraction", () => {
+    for (let width = 6; width < 40; width += 0.5) {
+      const lines = wrapRuns(
+        [{ text: "nappage foncé (12,5\u00a0%) et 1/2 portion, sucre,levure", bold: false }],
+        width,
+        7,
+        measure,
+      );
+      const ends = lines.map((line) => line.pieces.map((p) => p.text).join(""));
+      expect(ends.some((text) => text.endsWith("(12,") || text.endsWith("1/"))).toBe(false);
+    }
+    // La coupure après une virgule collée au mot suivant reste possible.
+    const lines = wrapRuns([{ text: "sucre,levure,sel,farine", bold: false }], 12, 7, measure);
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
   it("coupe au caractère un mot plus long que la ligne", () => {
     const lines = wrapRuns([{ text: "hémicellulases", bold: true }], 8, 7, measure);
     expect(lines.length).toBeGreaterThan(1);
