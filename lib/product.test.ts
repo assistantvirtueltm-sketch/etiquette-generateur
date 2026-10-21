@@ -5,10 +5,12 @@ import {
   addDays,
   emptyNutrition,
   emptyProduct,
+  formatDate,
   formatPrice,
   formatWeight,
   hasBlockingIssue,
   isBlankProduct,
+  labelDay,
   labelDates,
   parseNumber,
   netQuantityFigureHeightMm,
@@ -93,6 +95,27 @@ describe("isBlankProduct", () => {
     expect(isBlankProduct({ ...emptyProduct(), name: "P" })).toBe(false);
     expect(isBlankProduct({ ...emptyProduct(), netWeightGrams: 220 })).toBe(false);
     expect(isBlankProduct(painAuChocolat())).toBe(false);
+  });
+});
+
+describe("préparer pour demain", () => {
+  it("date les étiquettes du lendemain, emballage et date limite compris", () => {
+    const product = { ...painAuChocolat(), dateKind: "dlc" as const, shelfLifeDays: 3 };
+    const now = new Date(2026, 9, 21, 18, 45);
+    expect(labelDay(now, "today")).toEqual(new Date(2026, 9, 21));
+    expect(labelDay(now, "tomorrow")).toEqual(new Date(2026, 9, 22));
+    expect(labelDates(product, labelDay(now, "tomorrow"))).toEqual({
+      packedOn: "22/10/2026",
+      limitWording: "À consommer jusqu'au",
+      limit: "25/10/2026",
+    });
+  });
+
+  it("passe la fin de mois, d'année et le changement d'heure", () => {
+    expect(labelDay(new Date(2026, 9, 31, 22), "tomorrow")).toEqual(new Date(2026, 10, 1));
+    expect(labelDay(new Date(2026, 11, 31, 23, 59), "tomorrow")).toEqual(new Date(2027, 0, 1));
+    // Veille du passage à l'heure d'hiver (25/10/2026).
+    expect(formatDate(labelDay(new Date(2026, 9, 24, 23, 30), "tomorrow"))).toBe("25/10/2026");
   });
 });
 

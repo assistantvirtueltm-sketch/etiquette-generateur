@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { assortiment, painAuChocolat, SAMPLE_SETTINGS } from "./fixtures";
 import { A4_MM, AGIPA_118987, labelSlot, mmToPt } from "./label-layout";
 import { buildCalibrationPdf, buildPrintPdf, LabelRefusedError, sanitizeForPdf } from "./pdf";
+import { labelDay } from "./product";
 
 const spec = AGIPA_118987;
 const DAY = new Date(2026, 8, 25);
@@ -126,6 +127,12 @@ describe("buildPrintPdf", () => {
         DAY,
       ),
     ).rejects.toBeInstanceOf(LabelRefusedError);
+  });
+
+  it("nomme le PDF d'après le jour porté par les étiquettes (préparation la veille)", async () => {
+    const tomorrow = labelDay(new Date(2026, 8, 25, 19), "tomorrow");
+    const pdf = await buildPrintPdf([{ product: painAuChocolat(), count: 1 }], SAMPLE_SETTINGS, tomorrow);
+    expect(pdf.fileName).toBe("etiquettes-2026-09-26.pdf");
   });
 
   it("refuse une demande vide", async () => {

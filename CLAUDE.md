@@ -133,6 +133,12 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   l'export complet la referme (`markExported`). Rappel si des modifications
   attendent depuis `intervalDays` (3 par défaut, réglable, 0 = jamais),
   repoussable de 24 h.
+- **Préparer pour demain** (`PrintFor`, `labelDay` dans `lib/product.ts`) :
+  le jour porté par les étiquettes (emballage + date limite) vaut aujourd'hui
+  ou demain. État d'UI de `app/page.tsx`, **jamais persisté** (retour à
+  « aujourd'hui » à chaque ouverture, pour ne pas dater par erreur) ; recalculé
+  au clic d'impression. Le nom du PDF suit ce jour ; `lastPrint` garde l'heure
+  réelle de l'impression.
 - **Dernière impression** (`library.lastPrint`, propre au poste comme
   `backup` : ni exporté, ni écrasé par un import, hors `contentChanged`) :
   écrite après chaque PDF réussi ; la mercuriale reprend ces quantités tant

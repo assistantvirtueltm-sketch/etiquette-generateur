@@ -30,7 +30,13 @@ import {
   reactivateFolderBackup,
   subscribeFolderBackup,
 } from "@/lib/folder-backup-store";
-import { formatDate, isBlankProduct, type Product } from "@/lib/product";
+import {
+  formatDate,
+  isBlankProduct,
+  labelDay,
+  type PrintFor,
+  type Product,
+} from "@/lib/product";
 import {
   applyImport,
   parseImport,
@@ -75,6 +81,9 @@ export default function Page() {
   const [editing, setEditing] = useState<Editing>(null);
   // null = pas encore touchées aujourd'hui : on reprend celles de la dernière
   // impression (« même quantité que la veille »).
+  // Toujours « aujourd'hui » à l'ouverture : préparer pour demain est un
+  // choix explicite, jamais mémorisé, pour ne pas dater par erreur.
+  const [printFor, setPrintFor] = useState<PrintFor>("today");
   const [typedQuantities, setQuantities] = useState<Record<string, number> | null>(
     null,
   );
@@ -87,6 +96,12 @@ export default function Page() {
     createMeasurer().then((measure) => setEnv({ measure, today: new Date() }));
     void initFolderBackup();
   }, []);
+
+  // Mémorisé : l'aperçu ne se recalcule que si le jour change vraiment.
+  const printDay = useMemo(
+    () => (env ? labelDay(env.today, printFor) : null),
+    [env, printFor],
+  );
 
   const activeProducts = useMemo(
     () =>
@@ -157,7 +172,10 @@ export default function Page() {
     setBusy(true);
     try {
       const printedAt = new Date();
-      const pdf = await buildPrintPdf(jobs, library.settings, printedAt, SPEC);
+      // Jour recalculé au clic : une page restée ouverte après minuit date
+      // quand même juste.
+      const day = labelDay(printedAt, printFor);
+      const pdf = await buildPrintPdf(jobs, library.settings, day, SPEC);
       downloadPdf(pdf.bytes, pdf.fileName);
       // Base des quantités proposées à la prochaine ouverture.
       updateLibrary((current) => ({
@@ -170,7 +188,7 @@ export default function Page() {
       setStatus({
         kind: "info",
         text: [
-          `${pdf.fileName} : ${pdf.labelCount} étiquette(s) sur ${pdf.sheetCount} feuille(s). Mettre ${pdf.sheetCount} feuille(s) ${SPEC.reference} dans l'imprimante et imprimer à 100 %.`,
+          `${pdf.fileName} : ${pdf.labelCount} étiquette(s) datée(s) du ${formatDate(day)}${printFor === "tomorrow" ? " (préparation pour demain)" : ""}, sur ${pdf.sheetCount} feuille(s). Mettre ${pdf.sheetCount} feuille(s) ${SPEC.reference} dans l'imprimante et imprimer à 100 %.`,
           ...pdf.warnings,
         ].join(" "),
       });
@@ -391,7 +409,9 @@ export default function Page() {
           settings={library.settings}
           spec={SPEC}
           measure={env.measure}
-          today={env.today}
+          labelDay={printDay ?? env.today}
+          printFor={printFor}
+          onPrintForChange={setPrintFor}
           quantities={quantities}
           prefilledFrom={
             typedQuantities === null && library.lastPrint
