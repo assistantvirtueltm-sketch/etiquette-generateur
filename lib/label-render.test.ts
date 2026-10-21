@@ -318,6 +318,32 @@ describe("étiquette en portrait", () => {
   });
 });
 
+describe("pourcentages dans la dénomination", () => {
+  it("garde « (12,5 %) » sur une seule ligne, quelle que soit la place", () => {
+    const product = {
+      ...painAuChocolat(),
+      name: "Doony’s Choco Donut x4 – donut enrobé d’un nappage foncé (12,5 %) à base de cacao, décoré de copeaux de chocolat au lait (5 %)",
+    };
+    for (const orientation of ["landscape", "portrait"] as const) {
+      const { content } = render(product, { ...SAMPLE_SETTINGS, orientation });
+      // La dénomination est dessinée en premier, en gras : tout ce qui précède
+      // le premier texte non gras.
+      const firstRegular = content.texts.findIndex((t) => !t.bold);
+      const header = content.texts.slice(0, firstRegular);
+      expect(header.length).toBeGreaterThan(1);
+      const lines = new Map<number, string>();
+      for (const t of header) {
+        lines.set(t.baselineYMm, (lines.get(t.baselineYMm) ?? "") + t.text);
+      }
+      for (const line of lines.values()) {
+        expect(line.endsWith("(12,")).toBe(false);
+        expect(line.endsWith("(12,5")).toBe(false);
+        expect(line.startsWith("%")).toBe(false);
+      }
+    }
+  });
+});
+
 describe("bodyParagraphs", () => {
   it("préfixe chaque composant d'un assortiment par son nom", () => {
     const paragraphs = bodyParagraphs(assortiment());
