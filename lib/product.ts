@@ -322,6 +322,18 @@ export function formatDate(day: Date): string {
   return `${dd}/${mm}/${day.getFullYear()}`;
 }
 
+/**
+ * Jour pour lequel on imprime : aujourd'hui, ou demain pour préparer les
+ * étiquettes la veille (« préparer pour demain »). Toutes les dates de
+ * l'étiquette — emballage et date limite — partent de ce jour.
+ */
+export type PrintFor = "today" | "tomorrow";
+
+export function labelDay(now: Date, printFor: PrintFor): Date {
+  const today = localDay(now);
+  return printFor === "tomorrow" ? addDays(today, 1) : today;
+}
+
 export interface LabelDates {
   packedOn: string;
   limitWording: string;

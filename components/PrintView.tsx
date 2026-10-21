@@ -17,6 +17,7 @@ import {
   formatPrice,
   formatWeight,
   labelDates,
+  type PrintFor,
   type Product,
 } from "@/lib/product";
 import type { LibrarySettings } from "@/lib/storage";
@@ -26,7 +27,10 @@ interface PrintViewProps {
   settings: LibrarySettings;
   spec: SheetSpec;
   measure: MeasureText | null;
-  today: Date;
+  /** Jour porté par les étiquettes (aujourd'hui, ou demain en préparation). */
+  labelDay: Date;
+  printFor: PrintFor;
+  onPrintForChange: (printFor: PrintFor) => void;
   quantities: Readonly<Record<string, number>>;
   /** Date de l'impression dont les quantités sont reprises, sinon null. */
   prefilledFrom: Date | null;
@@ -48,7 +52,9 @@ export function PrintView({
   settings,
   spec,
   measure,
-  today,
+  labelDay,
+  printFor,
+  onPrintForChange,
   quantities,
   prefilledFrom,
   onQuantityChange,
@@ -66,11 +72,11 @@ export function PrintView({
         ? new Map(
             products.map((product) => [
               product.id,
-              prepareLabel(product, settings, today, spec, measure),
+              prepareLabel(product, settings, labelDay, spec, measure),
             ]),
           )
         : null,
-    [products, settings, today, spec, measure],
+    [products, settings, labelDay, spec, measure],
   );
 
   const lines = products
@@ -88,13 +94,20 @@ export function PrintView({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
       <Card
-        title={`Mercuriale du ${formatDate(today)}`}
+        title={`Mercuriale du ${formatDate(labelDay)}`}
         actions={
           <button type="button" className={buttonClass} onClick={onReset}>
             Tout remettre à zéro
           </button>
         }
       >
+        {printFor === "tomorrow" ? (
+          <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <strong>Préparation pour demain</strong> : les étiquettes seront
+            datées du <strong>{formatDate(labelDay)}</strong> (date
+            d&apos;emballage et date limite décalées d&apos;un jour).
+          </p>
+        ) : null}
         {prefilledFrom && products.length > 0 ? (
           <p className="mb-3 rounded-md bg-stone-100 px-3 py-2 text-sm text-stone-700">
             Quantités reprises de la dernière impression, le{" "}
@@ -111,7 +124,7 @@ export function PrintView({
             {products.map((product) => {
               const label = prepared?.get(product.id);
               const count = quantities[product.id] ?? 0;
-              const dates = labelDates(product, today);
+              const dates = labelDates(product, labelDay);
               return (
                 <li
                   key={product.id}
@@ -186,6 +199,48 @@ export function PrintView({
 
       <div className="space-y-6 lg:sticky lg:top-4 lg:self-start">
         <Card title="Impression">
+          <div className="mb-4 border-b border-stone-200 pb-4">
+            <p className="mb-2 text-xs font-medium text-stone-600">
+              Étiquettes pour
+            </p>
+            <div
+              role="radiogroup"
+              aria-label="Jour porté par les étiquettes"
+              className="grid grid-cols-2 gap-1 rounded-lg bg-stone-200 p-1"
+            >
+              {(
+                [
+                  ["today", "Aujourd'hui"],
+                  ["tomorrow", "Demain"],
+                ] as const
+              ).map(([value, label]) => {
+                const selected = printFor === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => onPrintForChange(value)}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                      selected
+                        ? value === "tomorrow"
+                          ? "bg-amber-500 text-white shadow-xs"
+                          : "bg-white text-stone-900 shadow-xs"
+                        : "text-stone-600 hover:text-stone-900"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-stone-500">
+              {printFor === "tomorrow"
+                ? "Préparer la veille : emballé le et date limite au lendemain."
+                : "Date d'emballage : aujourd'hui."}
+            </p>
+          </div>
           <div className="mb-4 border-b border-stone-200 pb-4">
             <p className="mb-2 text-xs font-medium text-stone-600">
               Sens des étiquettes

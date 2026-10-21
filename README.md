@@ -67,7 +67,10 @@ responsable qualité.
    Tout est enregistré à chaque frappe (pas de bouton « Enregistrer ») ;
    « Annuler mes modifications » revient à la fiche telle qu'à l'ouverture.
 3. **Impression du jour** : les quantités de la dernière impression sont
-   reprises ; les ajuster pour chaque produit actif. L'app indique combien de feuilles mettre dans l'imprimante, puis
+   reprises ; les ajuster pour chaque produit actif. « Étiquettes pour :
+   Demain » permet de préparer la veille : date d'emballage et date limite
+   partent du lendemain (le choix revient à « Aujourd'hui » à chaque
+   ouverture). L'app indique combien de feuilles mettre dans l'imprimante, puis
    télécharge le PDF.
 4. Imprimer **à 100 %** : dans la boîte de dialogue d'impression, choisir
    « Taille réelle » / « 100 % » et **désactiver** « Ajuster à la page ».
