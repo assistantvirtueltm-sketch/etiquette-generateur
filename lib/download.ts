@@ -1,19 +1,11 @@
-/** Déclenche le téléchargement d'un PDF généré en mémoire. */
-export function downloadPdf(bytes: Uint8Array, fileName: string): void {
-  const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    link.rel = "noopener";
-    document.body.append(link);
-    link.click();
-    link.remove();
-  } finally {
-    // Laisse au navigateur le temps de démarrer le téléchargement.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  }
+/**
+ * URL `blob:` d'un PDF généré en mémoire, pour l'afficher dans l'app. À
+ * révoquer (`URL.revokeObjectURL`) quand l'aperçu se ferme.
+ */
+export function pdfObjectUrl(bytes: Uint8Array): string {
+  return URL.createObjectURL(
+    new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
+  );
 }
 
 /** Déclenche le téléchargement d'un export JSON de la bibliothèque. */

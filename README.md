@@ -70,8 +70,9 @@ responsable qualité.
    reprises ; les ajuster pour chaque produit actif. « Étiquettes pour :
    Demain » permet de préparer la veille : date d'emballage et date limite
    partent du lendemain (le choix revient à « Aujourd'hui » à chaque
-   ouverture). L'app indique combien de feuilles mettre dans l'imprimante, puis
-   télécharge le PDF.
+   ouverture). « Générer le PDF » l'affiche dans une fenêtre de l'app, avec
+   le nombre de feuilles à mettre dans l'imprimante, et les boutons
+   « Imprimer », « Ouvrir dans un onglet » et « Télécharger ».
 4. Imprimer **à 100 %** : dans la boîte de dialogue d'impression, choisir
    « Taille réelle » / « 100 % » et **désactiver** « Ajuster à la page ».
 

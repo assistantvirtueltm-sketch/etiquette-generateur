@@ -222,7 +222,7 @@ export function SettingsView({
             onClick={onCalibration}
             className={`${buttonClass} mt-3 w-full`}
           >
-            Télécharger la planche de calibration
+            Ouvrir la planche de calibration
           </button>
           <p className="mt-2 text-xs text-stone-500">
             L&apos;imprimer à 100 % sur papier ordinaire et la superposer à une
