@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
+import { PdfViewerDialog, type OpenedPdf } from "@/components/PdfViewerDialog";
 import { PrintView } from "@/components/PrintView";
 import { ProductsView, type Editing } from "@/components/ProductsView";
 import { SettingsView } from "@/components/SettingsView";
-import { downloadJson, downloadPdf } from "@/lib/download";
+import { downloadJson, pdfObjectUrl } from "@/lib/download";
 import { AGIPA_118987 } from "@/lib/label-layout";
 import type { MeasureText } from "@/lib/label-render";
 import {
@@ -90,6 +97,24 @@ export default function Page() {
   const quantities = typedQuantities ?? library.lastPrint?.quantities ?? {};
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
+  // PDF affiché dans la fenêtre d'aperçu (au lieu d'un téléchargement).
+  const [openedPdf, setOpenedPdf] = useState<OpenedPdf | null>(null);
+
+  function showPdf(pdf: Omit<OpenedPdf, "url">, bytes: Uint8Array) {
+    const url = pdfObjectUrl(bytes);
+    setOpenedPdf((previous) => {
+      if (previous) URL.revokeObjectURL(previous.url);
+      return { ...pdf, url };
+    });
+  }
+
+  // Stable : la fenêtre s'abonne à Échap avec cette fonction.
+  const closePdf = useCallback(() => {
+    setOpenedPdf((previous) => {
+      if (previous) URL.revokeObjectURL(previous.url);
+      return null;
+    });
+  }, []);
 
   // Les métriques de police servent à la fois au PDF et à l'aperçu.
   useEffect(() => {
@@ -176,7 +201,14 @@ export default function Page() {
       // quand même juste.
       const day = labelDay(printedAt, printFor);
       const pdf = await buildPrintPdf(jobs, library.settings, day, SPEC);
-      downloadPdf(pdf.bytes, pdf.fileName);
+      showPdf(
+        {
+          fileName: pdf.fileName,
+          title: `Étiquettes du ${formatDate(day)}${printFor === "tomorrow" ? " (préparation pour demain)" : ""}`,
+          hint: `${pdf.labelCount} étiquette(s) : mettre ${pdf.sheetCount} feuille(s) ${SPEC.reference} dans l'imprimante.`,
+        },
+        pdf.bytes,
+      );
       // Base des quantités proposées à la prochaine ouverture.
       updateLibrary((current) => ({
         ...current,
@@ -212,11 +244,14 @@ export default function Page() {
         xMm: library.settings.offsetXMm,
         yMm: library.settings.offsetYMm,
       });
-      downloadPdf(pdf.bytes, pdf.fileName);
-      setStatus({
-        kind: "info",
-        text: "Planche de calibration téléchargée : l'imprimer à 100 % sur papier ordinaire et la superposer au support.",
-      });
+      showPdf(
+        {
+          fileName: pdf.fileName,
+          title: `Planche de calibration ${SPEC.reference}`,
+          hint: "À imprimer sur papier ordinaire, puis à superposer à une feuille d'étiquettes.",
+        },
+        pdf.bytes,
+      );
     } finally {
       setBusy(false);
     }
@@ -476,6 +511,7 @@ export default function Page() {
           onError={(message) => setStatus({ kind: "error", text: message })}
         />
       )}
+      {openedPdf ? <PdfViewerDialog pdf={openedPdf} onClose={closePdf} /> : null}
     </main>
   );
 }

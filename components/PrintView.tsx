@@ -286,7 +286,7 @@ export function PrintView({
             disabled={busy || plan.totalLabels === 0 || blocked.length > 0 || !measure}
             onClick={onPrint}
           >
-            Générer et télécharger le PDF
+            Voir et imprimer les étiquettes
           </button>
         </Card>
 

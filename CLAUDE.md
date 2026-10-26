@@ -155,6 +155,13 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   vaut `markExported`, sauf si le contenu a changé pendant l'écriture (on
   réécrit alors). En test navigateur, simuler le sélecteur avec l'OPFS
   (`navigator.storage.getDirectory()`).
+- **Aperçu du PDF dans l'app** (`components/PdfViewerDialog.tsx`) : les PDF
+  (planches du jour, calibration) ne sont plus téléchargés d'office mais
+  affichés dans une fenêtre (iframe sur une URL `blob:` créée par
+  `pdfObjectUrl`, révoquée à la fermeture). « Imprimer » appelle `print()` sur
+  le cadre (même origine) ; « Ouvrir dans un onglet » sert de repli aux
+  navigateurs mobiles qui n'affichent pas un PDF dans un cadre ; le
+  téléchargement reste proposé.
 - `lib/library-store.ts` — store externe lu par `useSyncExternalStore`. La
   persistance se fait **à l'écriture**, pas dans un effet (la règle
   `react-hooks/set-state-in-effect` interdit le `setState` dans un effet) ;
