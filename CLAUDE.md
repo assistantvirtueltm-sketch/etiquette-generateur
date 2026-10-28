@@ -107,6 +107,9 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   textes pour WinAnsi (polices standard, sinon `drawText` échoue).
 - `lib/pdf.ts` — fournit le mesureur Helvetica de pdf-lib, **partagé avec
   l'aperçu** : écran et papier ont la même mise en page au dixième de mm.
+  Il somme les chasses **sans crénage**, comme `drawText` imprime :
+  `widthOfTextAtSize` crène, d'où des capitales grasses qui chevauchaient
+  le texte suivant.
   `buildPrintPdf` refuse tout le lot (`LabelRefusedError`) si une seule fiche
   n'est pas imprimable ; produit aussi la planche de calibration.
 - `lib/storage.ts` — seul accès au `localStorage`, schéma versionné (v2 ;

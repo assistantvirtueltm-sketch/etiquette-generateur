@@ -38,9 +38,29 @@ interface Fonts {
   bold: PDFFont;
 }
 
+/**
+ * Largeur telle que `drawText` l'imprime : la somme des chasses des glyphes.
+ * `widthOfTextAtSize` applique le crénage des paires (« TA », « CÉ »…) que
+ * pdf-lib n'écrit pas dans le PDF : les mots en capitales (les allergènes)
+ * y étaient mesurés plus étroits qu'imprimés et chevauchaient la suite.
+ */
 function measurerFor(fonts: Fonts): MeasureText {
-  return (text, sizePt, bold) =>
-    (bold ? fonts.bold : fonts.regular).widthOfTextAtSize(text, sizePt);
+  // Chasse d'un caractère à 1000 pt : mesuré seul, il n'a pas de paire.
+  const advances = { regular: new Map<string, number>(), bold: new Map<string, number>() };
+  return (text, sizePt, bold) => {
+    const font = bold ? fonts.bold : fonts.regular;
+    const cache = bold ? advances.bold : advances.regular;
+    let total = 0;
+    for (const ch of text) {
+      let advance = cache.get(ch);
+      if (advance === undefined) {
+        advance = font.widthOfTextAtSize(ch, 1000);
+        cache.set(ch, advance);
+      }
+      total += advance;
+    }
+    return (total * sizePt) / 1000;
+  };
 }
 
 /**

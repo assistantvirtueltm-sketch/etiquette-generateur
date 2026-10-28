@@ -5,7 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import { assortiment, painAuChocolat, SAMPLE_SETTINGS } from "./fixtures";
 import { A4_MM, AGIPA_118987, labelSlot, mmToPt } from "./label-layout";
-import { buildCalibrationPdf, buildPrintPdf, LabelRefusedError, sanitizeForPdf } from "./pdf";
+import {
+  buildCalibrationPdf,
+  buildPrintPdf,
+  createMeasurer,
+  LabelRefusedError,
+  sanitizeForPdf,
+} from "./pdf";
 import { labelDay } from "./product";
 
 const spec = AGIPA_118987;
@@ -47,6 +53,17 @@ function firstTranslate(bytes: Uint8Array): { xPt: number; yPt: number } {
   if (!match) throw new Error("aucune barre");
   return { xPt: Number(match[1]), yPt: Number(match[2]) };
 }
+
+describe("createMeasurer", () => {
+  it("mesure ce que drawText imprime : la chasse des glyphes, sans crénage", async () => {
+    // pdf-lib n'écrit pas le crénage dans le PDF : un mot en capitales
+    // mesuré avec (« TA », « CÉ »…) chevauchait le texte qui le suit.
+    const measure = await createMeasurer();
+    const text = "CRUSTACÉS, POISSONS, CÉLERI, MOUTARDE, ";
+    const glyphs = [...text].reduce((sum, ch) => sum + measure(ch, 7, true), 0);
+    expect(measure(text, 7, true)).toBeCloseTo(glyphs, 9);
+  });
+});
 
 describe("buildPrintPdf", () => {
   it("enchaîne les produits sur autant de feuilles A4 que nécessaire", async () => {
