@@ -136,11 +136,16 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   l'export complet la referme (`markExported`). Rappel si des modifications
   attendent depuis `intervalDays` (3 par défaut, réglable, 0 = jamais),
   repoussable de 24 h.
-- **Préparer pour demain** (`PrintFor`, `labelDay` dans `lib/product.ts`) :
-  le jour porté par les étiquettes (emballage + date limite) vaut aujourd'hui
-  ou demain. État d'UI de `app/page.tsx`, **jamais persisté** (retour à
-  « aujourd'hui » à chaque ouverture, pour ne pas dater par erreur) ; recalculé
-  au clic d'impression. Le nom du PDF suit ce jour ; `lastPrint` garde l'heure
+- **Parcours d'impression** (`components/PrintWizard.tsx`, état
+  `WizardState` tenu par `app/page.tsx`), lancé par « Préparer les
+  étiquettes » : 1. le jour porté par les étiquettes (emballage + date
+  limite, `PrintFor` / `labelDay` dans `lib/product.ts`), aujourd'hui ou
+  demain, **sans choix par défaut** et jamais persisté, puis confirmation de
+  la date « Emballé le » imprimée ; 2. quantités et feuilles vierges à
+  charger ; 3. `PdfViewerDialog` (`onBack` : retour aux quantités ; le fermer
+  termine le parcours). Le PDF porte **exactement le jour confirmé** : si
+  minuit passe avant la validation ou l'impression (`isLabelDayCurrent`), on
+  revient à l'étape 1. Le nom du PDF suit ce jour ; `lastPrint` garde l'heure
   réelle de l'impression.
 - **Dernière impression** (`library.lastPrint`, propre au poste comme
   `backup` : ni exporté, ni écrasé par un import, hors `contentChanged`) :
@@ -170,7 +175,8 @@ fiche ──▶ product.ts         modèle, contrôles (productIssues), dates, p
   `react-hooks/set-state-in-effect` interdit le `setState` dans un effet) ;
   l'instantané serveur est vide et stable pour éviter tout écart d'hydratation.
 - `app/page.tsx` — état d'UI (onglet, quantités du jour, statut) ; trois
-  écrans : `PrintView` (mercuriale), `ProductsView`/`ProductEditor` (espace
+  écrans : `PrintView` (départ du parcours d'impression, produits actifs et
+  aperçu), `ProductsView`/`ProductEditor` (espace
   dédié à la modification des fiches), `SettingsView`. La date du jour et le
   mesureur ne sont créés que côté client (évite l'écart d'hydratation).
 

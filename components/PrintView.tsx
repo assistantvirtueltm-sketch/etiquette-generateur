@@ -4,67 +4,55 @@ import { useMemo, useState } from "react";
 
 import { LabelPreview } from "@/components/LabelPreview";
 import { OrientationSwitch } from "@/components/OrientationSwitch";
-import { buttonClass, Card, IssueList, primaryButtonClass } from "@/components/ui";
-import {
-  labelsPerSheet,
-  type Orientation,
-  type SheetSpec,
-} from "@/lib/label-layout";
-import { planSheets, prepareLabel } from "@/lib/label-job";
+import { Card, IssueList } from "@/components/ui";
+import type { Orientation, SheetSpec } from "@/lib/label-layout";
+import { prepareLabel } from "@/lib/label-job";
 import type { MeasureText } from "@/lib/label-render";
 import {
   formatDate,
   formatPrice,
   formatWeight,
   labelDates,
-  type PrintFor,
   type Product,
 } from "@/lib/product";
-import type { LibrarySettings } from "@/lib/storage";
+import type { LastPrint, LibrarySettings } from "@/lib/storage";
 
 interface PrintViewProps {
   products: readonly Product[];
   settings: LibrarySettings;
   spec: SheetSpec;
   measure: MeasureText | null;
-  /** Jour porté par les étiquettes (aujourd'hui, ou demain en préparation). */
-  labelDay: Date;
-  printFor: PrintFor;
-  onPrintForChange: (printFor: PrintFor) => void;
-  quantities: Readonly<Record<string, number>>;
-  /** Date de l'impression dont les quantités sont reprises, sinon null. */
-  prefilledFrom: Date | null;
-  onQuantityChange: (productId: string, count: number) => void;
-  onReset: () => void;
-  onPrint: () => void;
+  today: Date;
+  lastPrint: LastPrint | null;
+  onStart: () => void;
   onOrientationChange: (orientation: Orientation) => void;
-  busy: boolean;
 }
 
-const MAX_PER_PRODUCT = 800;
+/** Bouton d'entrée du parcours : le plus visible de la page. */
+const startButtonClass =
+  "rounded-lg bg-stone-900 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400";
+
+const START_STEPS = [
+  "Choisir le jour : aujourd'hui ou demain",
+  "Indiquer le nombre d'étiquettes par produit",
+  "Mettre les feuilles et imprimer",
+];
 
 /**
- * Mercuriale du jour : les produits actifs, le nombre d'étiquettes voulu pour
- * chacun, et le nombre de feuilles à mettre dans l'imprimante.
+ * Onglet Impression : point de départ du parcours guidé (`PrintWizard`), et
+ * contrôle des produits actifs avec l'aperçu de leur étiquette.
  */
 export function PrintView({
   products,
   settings,
   spec,
   measure,
-  labelDay,
-  printFor,
-  onPrintForChange,
-  quantities,
-  prefilledFrom,
-  onQuantityChange,
-  onReset,
-  onPrint,
+  today,
+  lastPrint,
+  onStart,
   onOrientationChange,
-  busy,
 }: PrintViewProps) {
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const perSheet = labelsPerSheet(spec);
 
   const prepared = useMemo(
     () =>
@@ -72,222 +60,105 @@ export function PrintView({
         ? new Map(
             products.map((product) => [
               product.id,
-              prepareLabel(product, settings, labelDay, spec, measure),
+              prepareLabel(product, settings, today, spec, measure),
             ]),
           )
         : null,
-    [products, settings, labelDay, spec, measure],
-  );
-
-  const lines = products
-    .map((product) => ({ productId: product.id, count: quantities[product.id] ?? 0 }))
-    .filter((line) => line.count > 0);
-  const plan = planSheets(lines, perSheet);
-  const blocked = lines.filter(
-    (line) => prepared?.get(line.productId)?.printable === false,
+    [products, settings, today, spec, measure],
   );
 
   const previewProduct =
     products.find((product) => product.id === previewId) ?? products[0] ?? null;
   const preview = previewProduct ? prepared?.get(previewProduct.id) : undefined;
+  const lastPrintLabels = lastPrint
+    ? Object.values(lastPrint.quantities).reduce((sum, count) => sum + count, 0)
+    : 0;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <Card
-        title={`Mercuriale du ${formatDate(labelDay)}`}
-        actions={
-          <button type="button" className={buttonClass} onClick={onReset}>
-            Tout remettre à zéro
-          </button>
-        }
-      >
-        {printFor === "tomorrow" ? (
-          <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            <strong>Préparation pour demain</strong> : les étiquettes seront
-            datées du <strong>{formatDate(labelDay)}</strong> (date
-            d&apos;emballage et date limite décalées d&apos;un jour).
-          </p>
-        ) : null}
-        {prefilledFrom && products.length > 0 ? (
-          <p className="mb-3 rounded-md bg-stone-100 px-3 py-2 text-sm text-stone-700">
-            Quantités reprises de la dernière impression, le{" "}
-            {formatDate(prefilledFrom)}. Les ajuster si besoin.
-          </p>
-        ) : null}
-        {products.length === 0 ? (
-          <p className="text-sm text-stone-500">
-            Aucun produit actif. Créer ou activer des fiches dans l&apos;onglet
-            « Fiches produits ».
-          </p>
-        ) : (
-          <ul className="divide-y divide-stone-200">
-            {products.map((product) => {
-              const label = prepared?.get(product.id);
-              const count = quantities[product.id] ?? 0;
-              const dates = labelDates(product, labelDay);
-              return (
-                <li
-                  key={product.id}
-                  className={`flex flex-wrap items-center gap-3 py-3 ${
-                    previewProduct?.id === product.id ? "bg-stone-50" : ""
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setPreviewId(product.id)}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <span className="block truncate text-sm font-medium text-stone-900">
-                      {product.name}
-                    </span>
-                    <span className="block text-xs text-stone-500">
-                      {formatPrice(product.priceCents)}
-                      {product.netWeightGrams ? ` · ${formatWeight(product.netWeightGrams)}` : ""} ·{" "}
-                      {product.dateKind.toUpperCase()} {dates.limit}
-                    </span>
-                    {label && !label.printable ? (
-                      <span className="block text-xs text-red-700">
-                        Non imprimable :{" "}
-                        {label.issues.find((issue) => issue.level === "error")?.message}
-                      </span>
-                    ) : null}
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      aria-label={`Une étiquette de moins pour ${product.name}`}
-                      className={buttonClass}
-                      disabled={count === 0}
-                      onClick={() => onQuantityChange(product.id, count - 1)}
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min={0}
-                      max={MAX_PER_PRODUCT}
-                      aria-label={`Nombre d'étiquettes pour ${product.name}`}
-                      value={count}
-                      onChange={(event) =>
-                        onQuantityChange(
-                          product.id,
-                          Math.min(
-                            MAX_PER_PRODUCT,
-                            Math.max(0, Math.trunc(Number(event.target.value) || 0)),
-                          ),
-                        )
-                      }
-                      className="w-16 rounded-md border border-stone-300 px-2 py-1.5 text-center text-sm"
-                    />
-                    <button
-                      type="button"
-                      aria-label={`Une étiquette de plus pour ${product.name}`}
-                      className={buttonClass}
-                      onClick={() =>
-                        onQuantityChange(product.id, Math.min(MAX_PER_PRODUCT, count + 1))
-                      }
-                    >
-                      +
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      <div className="space-y-6 lg:sticky lg:top-4 lg:self-start">
-        <Card title="Impression">
-          <div className="mb-4 border-b border-stone-200 pb-4">
-            <p className="mb-2 text-xs font-medium text-stone-600">
-              Étiquettes pour
-            </p>
-            <div
-              role="radiogroup"
-              aria-label="Jour porté par les étiquettes"
-              className="grid grid-cols-2 gap-1 rounded-lg bg-stone-200 p-1"
-            >
-              {(
-                [
-                  ["today", "Aujourd'hui"],
-                  ["tomorrow", "Demain"],
-                ] as const
-              ).map(([value, label]) => {
-                const selected = printFor === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => onPrintForChange(value)}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                      selected
-                        ? value === "tomorrow"
-                          ? "bg-amber-500 text-white shadow-xs"
-                          : "bg-white text-stone-900 shadow-xs"
-                        : "text-stone-600 hover:text-stone-900"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-xs text-stone-500">
-              {printFor === "tomorrow"
-                ? "Préparer la veille : emballé le et date limite au lendemain."
-                : "Date d'emballage : aujourd'hui."}
-            </p>
-          </div>
-          <div className="mb-4 border-b border-stone-200 pb-4">
-            <p className="mb-2 text-xs font-medium text-stone-600">
-              Sens des étiquettes
-            </p>
-            <OrientationSwitch
-              value={settings.orientation}
-              onChange={onOrientationChange}
-            />
-          </div>
-          <dl className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-stone-600">Étiquettes</dt>
-              <dd className="font-semibold">{plan.totalLabels}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-stone-600">Feuilles {spec.reference}</dt>
-              <dd className="font-semibold">{plan.sheets}</dd>
-            </div>
-          </dl>
-          {plan.sheets > 0 ? (
-            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Mettre <strong>{plan.sheets} feuille{plan.sheets > 1 ? "s" : ""}</strong>{" "}
-              {spec.reference} dans l&apos;imprimante
-              {plan.unusedOnLastSheet > 0
-                ? ` (${plan.unusedOnLastSheet} étiquette${plan.unusedOnLastSheet > 1 ? "s" : ""} vide${plan.unusedOnLastSheet > 1 ? "s" : ""} sur la dernière).`
-                : "."}{" "}
-              Imprimer à 100 % (« taille réelle »).
-            </p>
-          ) : (
-            <p className="mt-3 text-sm text-stone-500">
-              Choisir le nombre d&apos;étiquettes de chaque produit.
-            </p>
-          )}
-          {blocked.length > 0 ? (
-            <p className="mt-3 text-sm text-red-700">
-              {blocked.length} produit(s) demandé(s) non imprimable(s) : corriger
-              la fiche ou remettre la quantité à zéro.
-            </p>
-          ) : null}
+      <div className="min-w-0 space-y-6">
+        <section className="rounded-lg border border-stone-200 bg-white p-6 shadow-xs">
+          <h2 className="text-lg font-semibold text-stone-900">
+            Imprimer des étiquettes
+          </h2>
+          <ol className="mt-3 grid gap-2 text-sm text-stone-700 sm:grid-cols-3">
+            {START_STEPS.map((text, index) => (
+              <li key={text} className="flex items-start gap-2">
+                <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-stone-200 text-xs font-semibold text-stone-800">
+                  {index + 1}
+                </span>
+                {text}
+              </li>
+            ))}
+          </ol>
           <button
             type="button"
-            className={`${primaryButtonClass} mt-4 w-full`}
-            disabled={busy || plan.totalLabels === 0 || blocked.length > 0 || !measure}
-            onClick={onPrint}
+            className={`${startButtonClass} mt-5 w-full sm:w-auto`}
+            disabled={products.length === 0 || !measure}
+            onClick={onStart}
           >
-            Voir et imprimer les étiquettes
+            Préparer les étiquettes
           </button>
+          {products.length === 0 ? (
+            <p className="mt-3 text-sm text-stone-500">
+              Aucun produit actif. Créer ou activer des fiches dans l&apos;onglet
+              « Fiches produits ».
+            </p>
+          ) : lastPrint ? (
+            <p className="mt-3 text-xs text-stone-500">
+              Dernière impression le {formatDate(new Date(lastPrint.printedAt))} :{" "}
+              {lastPrintLabels} étiquette{lastPrintLabels > 1 ? "s" : ""}.
+            </p>
+          ) : null}
+        </section>
+
+        {products.length > 0 ? (
+          <Card title={`Produits actifs (${products.length})`}>
+            <p className="mb-2 text-xs text-stone-500">
+              Cliquer sur un produit pour voir son étiquette.
+            </p>
+            <ul className="divide-y divide-stone-200">
+              {products.map((product) => {
+                const label = prepared?.get(product.id);
+                const dates = labelDates(product, today);
+                return (
+                  <li key={product.id}>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewId(product.id)}
+                      className={`block w-full px-2 py-3 text-left ${
+                        previewProduct?.id === product.id ? "bg-stone-50" : ""
+                      }`}
+                    >
+                      <span className="block truncate text-sm font-medium text-stone-900">
+                        {product.name}
+                      </span>
+                      <span className="block text-xs text-stone-500">
+                        {formatPrice(product.priceCents)}
+                        {product.netWeightGrams ? ` · ${formatWeight(product.netWeightGrams)}` : ""} ·{" "}
+                        {product.dateKind.toUpperCase()} {dates.limit} si imprimé aujourd&apos;hui
+                      </span>
+                      {label && !label.printable ? (
+                        <span className="block text-xs text-red-700">
+                          Non imprimable :{" "}
+                          {label.issues.find((issue) => issue.level === "error")?.message}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        ) : null}
+      </div>
+
+      <div className="min-w-0 space-y-6 lg:sticky lg:top-4 lg:self-start">
+        <Card title="Sens des étiquettes">
+          <OrientationSwitch
+            value={settings.orientation}
+            onChange={onOrientationChange}
+          />
         </Card>
 
         {previewProduct && preview ? (

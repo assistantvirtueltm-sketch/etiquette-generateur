@@ -6,10 +6,12 @@ import {
   emptyNutrition,
   emptyProduct,
   formatDate,
+  formatLongDate,
   formatPrice,
   formatWeight,
   hasBlockingIssue,
   isBlankProduct,
+  isLabelDayCurrent,
   labelDay,
   labelDates,
   parseNumber,
@@ -116,6 +118,22 @@ describe("préparer pour demain", () => {
     expect(labelDay(new Date(2026, 11, 31, 23, 59), "tomorrow")).toEqual(new Date(2027, 0, 1));
     // Veille du passage à l'heure d'hiver (25/10/2026).
     expect(formatDate(labelDay(new Date(2026, 9, 24, 23, 30), "tomorrow"))).toBe("25/10/2026");
+  });
+
+  it("écrit le jour en toutes lettres pour la confirmation", () => {
+    expect(formatLongDate(new Date(2026, 9, 31))).toBe("samedi 31 octobre 2026");
+    expect(formatLongDate(new Date(2026, 10, 1))).toBe("dimanche 1er novembre 2026");
+    expect(formatLongDate(new Date(2027, 1, 8))).toBe("lundi 8 février 2027");
+  });
+
+  it("invalide le jour confirmé quand minuit passe avant l'impression", () => {
+    const confirmedAt = new Date(2026, 9, 31, 23, 58);
+    const tomorrow = labelDay(confirmedAt, "tomorrow");
+    expect(isLabelDayCurrent(tomorrow, "tomorrow", new Date(2026, 9, 31, 23, 59, 59))).toBe(true);
+    expect(isLabelDayCurrent(tomorrow, "tomorrow", new Date(2026, 10, 1, 0, 1))).toBe(false);
+    const today = labelDay(confirmedAt, "today");
+    expect(isLabelDayCurrent(today, "today", new Date(2026, 10, 1, 0, 1))).toBe(false);
+    expect(isLabelDayCurrent(today, "today", new Date(2026, 9, 31, 8))).toBe(true);
   });
 });
 

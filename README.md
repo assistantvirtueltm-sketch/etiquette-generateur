@@ -66,13 +66,17 @@ responsable qualité.
    leur composition peut être reprise. Coller le code-barres créé en caisse.
    Tout est enregistré à chaque frappe (pas de bouton « Enregistrer ») ;
    « Annuler mes modifications » revient à la fiche telle qu'à l'ouverture.
-3. **Impression du jour** : les quantités de la dernière impression sont
-   reprises ; les ajuster pour chaque produit actif. « Étiquettes pour :
-   Demain » permet de préparer la veille : date d'emballage et date limite
-   partent du lendemain (le choix revient à « Aujourd'hui » à chaque
-   ouverture). « Voir et imprimer les étiquettes » les affiche dans une fenêtre de l'app, avec
-   le nombre de feuilles à mettre dans l'imprimante, et les boutons
-   « Imprimer », « Ouvrir dans un onglet » et « Télécharger ».
+3. **Impression** : « Préparer les étiquettes » ouvre un parcours guidé en
+   trois étapes, pour ne rien oublier.
+   1. *Jour* : aujourd'hui, ou demain pour préparer la veille. Rien n'est
+      coché d'avance ; la date « Emballé le » qui sera imprimée s'affiche
+      pour confirmation, et les dates limites en partent.
+   2. *Quantités* : celles de la dernière impression sont reprises ; les
+      ajuster pour chaque produit actif. Le nombre de feuilles nécessaires
+      s'affiche : les mettre dans l'imprimante à ce moment-là.
+   3. *Impression* : le PDF s'affiche dans une fenêtre de l'app, avec
+      « Imprimer », « Ouvrir dans un onglet », « Télécharger » et un retour
+      aux quantités.
 4. Imprimer **à 100 %** : dans la boîte de dialogue d'impression, choisir
    « Taille réelle » / « 100 % » et **désactiver** « Ajuster à la page ».
 

@@ -322,6 +322,18 @@ export function formatDate(day: Date): string {
   return `${dd}/${mm}/${day.getFullYear()}`;
 }
 
+const WEEKDAYS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const MONTHS = [
+  "janvier", "février", "mars", "avril", "mai", "juin",
+  "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+];
+
+/** « samedi 31 octobre 2026 », « dimanche 1er novembre 2026 ». */
+export function formatLongDate(day: Date): string {
+  const date = day.getDate();
+  return `${WEEKDAYS[day.getDay()]} ${date === 1 ? "1er" : date} ${MONTHS[day.getMonth()]} ${day.getFullYear()}`;
+}
+
 /**
  * Jour pour lequel on imprime : aujourd'hui, ou demain pour préparer les
  * étiquettes la veille (« préparer pour demain »). Toutes les dates de
@@ -332,6 +344,15 @@ export type PrintFor = "today" | "tomorrow";
 export function labelDay(now: Date, printFor: PrintFor): Date {
   const today = localDay(now);
   return printFor === "tomorrow" ? addDays(today, 1) : today;
+}
+
+/**
+ * Le jour validé dans le parcours d'impression est-il toujours celui que ce
+ * choix donne maintenant ? Faux si minuit est passé depuis la validation : on
+ * redemande le jour plutôt que d'imprimer une autre date que celle confirmée.
+ */
+export function isLabelDayCurrent(day: Date, printFor: PrintFor, now: Date): boolean {
+  return labelDay(now, printFor).getTime() === localDay(day).getTime();
 }
 
 export interface LabelDates {

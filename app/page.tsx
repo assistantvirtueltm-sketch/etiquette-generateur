@@ -10,6 +10,11 @@ import {
 
 import { PdfViewerDialog, type OpenedPdf } from "@/components/PdfViewerDialog";
 import { PrintView } from "@/components/PrintView";
+import {
+  PrintWizard,
+  startWizard,
+  type WizardState,
+} from "@/components/PrintWizard";
 import { ProductsView, type Editing } from "@/components/ProductsView";
 import { SettingsView } from "@/components/SettingsView";
 import { downloadJson, pdfObjectUrl } from "@/lib/download";
@@ -40,6 +45,7 @@ import {
 import {
   formatDate,
   isBlankProduct,
+  isLabelDayCurrent,
   labelDay,
   type PrintFor,
   type Product,
@@ -61,10 +67,13 @@ type Tab = "print" | "products" | "settings";
 type Status = { kind: "info" | "error"; text: string } | null;
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "print", label: "Impression du jour" },
+  { id: "print", label: "Impression" },
   { id: "products", label: "Fiches produits" },
   { id: "settings", label: "Réglages et sauvegarde" },
 ];
+
+const DAY_CHANGED =
+  "Minuit est passé depuis votre choix : choisissez à nouveau le jour des étiquettes.";
 
 /** Mesureur de police et date du jour : n'existent que côté navigateur. */
 interface ClientEnv {
@@ -86,11 +95,12 @@ export default function Page() {
   const [env, setEnv] = useState<ClientEnv | null>(null);
   const [tab, setTab] = useState<Tab>("print");
   const [editing, setEditing] = useState<Editing>(null);
+  // Parcours d'impression en cours (null : fermé). Le jour des étiquettes
+  // s'y choisit à chaque fois, sans valeur par défaut ni mémoire, pour ne
+  // pas dater par erreur.
+  const [wizard, setWizard] = useState<WizardState | null>(null);
   // null = pas encore touchées aujourd'hui : on reprend celles de la dernière
   // impression (« même quantité que la veille »).
-  // Toujours « aujourd'hui » à l'ouverture : préparer pour demain est un
-  // choix explicite, jamais mémorisé, pour ne pas dater par erreur.
-  const [printFor, setPrintFor] = useState<PrintFor>("today");
   const [typedQuantities, setQuantities] = useState<Record<string, number> | null>(
     null,
   );
@@ -108,25 +118,30 @@ export default function Page() {
     });
   }
 
-  // Stable : la fenêtre s'abonne à Échap avec cette fonction.
+  // Stables : les fenêtres s'abonnent à Échap avec ces fonctions. Fermer le
+  // PDF termine aussi le parcours d'impression.
   const closePdf = useCallback(() => {
     setOpenedPdf((previous) => {
       if (previous) URL.revokeObjectURL(previous.url);
       return null;
     });
+    setWizard(null);
   }, []);
+  const closeWizard = useCallback(() => setWizard(null), []);
+
+  /** Retour du PDF (étape 3) aux quantités : le parcours reste ouvert. */
+  function backToQuantities() {
+    setOpenedPdf((previous) => {
+      if (previous) URL.revokeObjectURL(previous.url);
+      return null;
+    });
+  }
 
   // Les métriques de police servent à la fois au PDF et à l'aperçu.
   useEffect(() => {
     createMeasurer().then((measure) => setEnv({ measure, today: new Date() }));
     void initFolderBackup();
   }, []);
-
-  // Mémorisé : l'aperçu ne se recalcule que si le jour change vraiment.
-  const printDay = useMemo(
-    () => (env ? labelDay(env.today, printFor) : null),
-    [env, printFor],
-  );
 
   const activeProducts = useMemo(
     () =>
@@ -190,17 +205,43 @@ export default function Page() {
     }));
   }
 
+  /** Étape 1 validée : le jour coché devient celui de toutes les étiquettes. */
+  function confirmDay() {
+    if (!wizard?.choice) return;
+    const now = new Date();
+    const day = labelDay(wizard.openedAt, wizard.choice);
+    // Les jours proposés datent de l'ouverture du parcours : après minuit,
+    // « aujourd'hui » affiché ne serait plus aujourd'hui.
+    if (!isLabelDayCurrent(day, wizard.choice, now)) {
+      setWizard(startWizard(now, DAY_CHANGED));
+      return;
+    }
+    setWizard({
+      ...wizard,
+      confirmed: { printFor: wizard.choice, day },
+      notice: null,
+      error: null,
+    });
+  }
+
+  /** Étape 2 → 3 : génère le PDF du jour confirmé et l'affiche. */
   async function print() {
+    if (!wizard?.confirmed) return;
+    const { printFor, day } = wizard.confirmed;
+    const printedAt = new Date();
+    // On imprime le jour confirmé, jamais un autre : si minuit est passé
+    // depuis la validation, on le redemande.
+    if (!isLabelDayCurrent(day, printFor, printedAt)) {
+      setWizard(startWizard(printedAt, DAY_CHANGED));
+      return;
+    }
     const jobs = activeProducts
       .map((product) => ({ product, count: quantities[product.id] ?? 0 }))
       .filter((job) => job.count > 0);
     setBusy(true);
     try {
-      const printedAt = new Date();
-      // Jour recalculé au clic : une page restée ouverte après minuit date
-      // quand même juste.
-      const day = labelDay(printedAt, printFor);
       const pdf = await buildPrintPdf(jobs, library.settings, day, SPEC);
+      setWizard((current) => current && { ...current, error: null });
       showPdf(
         {
           fileName: pdf.fileName,
@@ -225,13 +266,11 @@ export default function Page() {
         ].join(" "),
       });
     } catch (error) {
-      setStatus({
-        kind: "error",
-        text:
-          error instanceof LabelRefusedError || error instanceof Error
-            ? error.message
-            : "Génération impossible.",
-      });
+      const message =
+        error instanceof LabelRefusedError || error instanceof Error
+          ? error.message
+          : "Génération impossible.";
+      setWizard((current) => current && { ...current, error: message });
     } finally {
       setBusy(false);
     }
@@ -444,22 +483,10 @@ export default function Page() {
           settings={library.settings}
           spec={SPEC}
           measure={env.measure}
-          labelDay={printDay ?? env.today}
-          printFor={printFor}
-          onPrintForChange={setPrintFor}
-          quantities={quantities}
-          prefilledFrom={
-            typedQuantities === null && library.lastPrint
-              ? new Date(library.lastPrint.printedAt)
-              : null
-          }
-          onQuantityChange={(productId, count) =>
-            setQuantities({ ...quantities, [productId]: count })
-          }
-          onReset={() => setQuantities({})}
-          onPrint={() => void print()}
+          today={env.today}
+          lastPrint={library.lastPrint}
+          onStart={() => setWizard(startWizard(new Date()))}
           onOrientationChange={(orientation) => updateSettings({ orientation })}
-          busy={busy}
         />
       ) : tab === "products" ? (
         <ProductsView
@@ -511,7 +538,42 @@ export default function Page() {
           onError={(message) => setStatus({ kind: "error", text: message })}
         />
       )}
-      {openedPdf ? <PdfViewerDialog pdf={openedPdf} onClose={closePdf} /> : null}
+      {wizard && env && !openedPdf ? (
+        <PrintWizard
+          state={wizard}
+          products={activeProducts}
+          settings={library.settings}
+          spec={SPEC}
+          measure={env.measure}
+          quantities={quantities}
+          prefilledFrom={
+            typedQuantities === null && library.lastPrint
+              ? new Date(library.lastPrint.printedAt)
+              : null
+          }
+          onQuantityChange={(productId, count) =>
+            setQuantities({ ...quantities, [productId]: count })
+          }
+          onReset={() => setQuantities({})}
+          onChoose={(choice: PrintFor) =>
+            setWizard((current) => current && { ...current, choice })
+          }
+          onConfirm={confirmDay}
+          onBack={() =>
+            setWizard((current) => current && { ...current, confirmed: null, error: null })
+          }
+          onNext={() => void print()}
+          onClose={closeWizard}
+          busy={busy}
+        />
+      ) : null}
+      {openedPdf ? (
+        <PdfViewerDialog
+          pdf={openedPdf}
+          onClose={closePdf}
+          onBack={wizard ? backToQuantities : undefined}
+        />
+      ) : null}
     </main>
   );
 }

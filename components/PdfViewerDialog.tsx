@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { WizardSteps } from "@/components/PrintWizard";
 import { buttonClass, primaryButtonClass } from "@/components/ui";
 
 export interface OpenedPdf {
@@ -17,14 +18,17 @@ export interface OpenedPdf {
  * Fenêtre d'aperçu du PDF dans l'app : le visionneur PDF du navigateur dans
  * un cadre, avec impression directe. Le téléchargement reste proposé, et
  * « Ouvrir dans un onglet » sert de repli aux navigateurs (mobiles surtout)
- * qui n'affichent pas un PDF dans un cadre.
+ * qui n'affichent pas un PDF dans un cadre. Avec `onBack`, la fenêtre est
+ * l'étape 3 du parcours d'impression et permet de revenir aux quantités.
  */
 export function PdfViewerDialog({
   pdf,
   onClose,
+  onBack,
 }: {
   pdf: OpenedPdf;
   onClose: () => void;
+  onBack?: () => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -63,6 +67,11 @@ export function PdfViewerDialog({
         aria-labelledby="pdf-viewer-title"
         className="flex h-full max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
       >
+        {onBack ? (
+          <div className="border-b border-stone-200 px-4 py-2">
+            <WizardSteps current={2} />
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
           <div className="min-w-0">
             <h2 id="pdf-viewer-title" className="truncate text-sm font-semibold text-stone-900">
@@ -71,6 +80,11 @@ export function PdfViewerDialog({
             <p className="text-xs text-stone-600">{pdf.hint}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {onBack ? (
+              <button type="button" className={buttonClass} onClick={onBack}>
+                ← Modifier les quantités
+              </button>
+            ) : null}
             <button type="button" className={primaryButtonClass} onClick={print}>
               Imprimer
             </button>
